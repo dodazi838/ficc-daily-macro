@@ -140,8 +140,13 @@ class AIContextBuilder:
             ]
         }
 
+        cutoff_kst = processed_data.get("cutoff_kst", f"{report_date} 16:30:00 KST")
+        run_time_kst = processed_data.get("run_time_kst", "")
+
         return {
             "report_date": report_date,
+            "cutoff_kst": cutoff_kst,
+            "run_time_kst": run_time_kst,
             "target_time_kst": "16:30 KST (정규 마감 확정치)",
             "market_data": {
                 "fx": fx_items,

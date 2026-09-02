@@ -45,12 +45,12 @@ COLOR_YELLOW = "\033[93m"
 COLOR_BOLD = "\033[1m"
 COLOR_RESET = "\033[0m"
 
-def print_header(now_kst: datetime.datetime, is_post_1630: bool):
+def print_header(now_kst: datetime.datetime, cutoff_kst: datetime.datetime, is_post_1630: bool):
     report_date = now_kst.strftime("%Y-%m-%d")
     print("=" * 115)
     print(f"{COLOR_BOLD}{COLOR_CYAN} [FICC Daily Macro] 통합 파이프라인 (Single Source of Truth & FactValidator Gatekeeper){COLOR_RESET}")
-    print(f" • 리포트 목표일자 (report_date) : {COLOR_BOLD}{report_date}{COLOR_RESET}")
-    print(f" • 목표 벤치마크 시각 (target_time): {COLOR_BOLD}{TARGET_DAILY_TIME_STR}{COLOR_RESET}")
+    print(f" • 보고서 기준일자 (report_date)   : {COLOR_BOLD}{report_date}{COLOR_RESET}")
+    print(f" • 공식 데이터 기준시각 (cutoff_kst) : {COLOR_BOLD}{COLOR_GREEN}{cutoff_kst.strftime('%Y-%m-%d %H:%M:%S')} KST (16:30 고정 기준){COLOR_RESET}")
     print(f" • 실제 프로그램 실행시각 (run_time): {COLOR_BOLD}{now_kst.strftime('%Y-%m-%d %H:%M:%S')} KST{COLOR_RESET}")
 
     if is_post_1630:
@@ -58,38 +58,37 @@ def print_header(now_kst: datetime.datetime, is_post_1630: bool):
     else:
         print(f" • 실행 모드 : {COLOR_YELLOW}{COLOR_BOLD}⚠️ [장중 실시간 집계 (16:30 이전 테스트)]{COLOR_RESET}")
         print(f"   {COLOR_YELLOW}※ 주의: 현재 시각({now_kst.strftime('%H:%M')} KST)은 정규 마감 기준시각(16:30 KST) 이전입니다.")
-        print(f"   ※ 장중 실시간 데이터가 수집되며 16:30 이후 재실행 시 공식 마감치로 확정됩니다.{COLOR_RESET}")
     print("=" * 115)
 
-def print_market_tables(processed_data: dict):
-    categories = processed_data["categories"]
-    spreads = processed_data["spreads"]
+def print_market_tables(market_data: dict):
+    categories = market_data.get("categories", {})
+    spreads = market_data.get("spreads", [])
 
     # 1. 증시 (10개)
-    print(f"\n{COLOR_BOLD}1. 국내외 증시 (Equity Markets — 10개 지표){COLOR_RESET}")
+    print(f"\n{COLOR_BOLD}1. 글로벌 및 아시아 주요 증시 (Equities — 10개 지표){COLOR_RESET}")
     eq_rows = []
     for r in categories.get("EQUITY", []):
         c_str = f"{r['current']:,.2f}" if r['current'] is not None else "N/A"
         chg_str = format_change(r['change'], is_pct=False)
         pct_str = format_change(r['pct_change'], is_pct=True)
         eq_rows.append([r['name'], r['symbol'], c_str, chg_str, pct_str, r['price_type'], r['actual_as_of_kst']])
-    print(tabulate(eq_rows, headers=["종목명", "심볼", "현재가/종가", "전일대비", "등락률(%)", "가격기준", "수집기준시각(KST)"], tablefmt="rounded_grid"))
+    print(tabulate(eq_rows, headers=["지수명", "심볼", "종가/현재가", "전일대비", "등락률(%)", "가격기준", "수집기준시각(KST)"], tablefmt="rounded_grid"))
 
     # 2. 외환 (6개)
-    print(f"\n{COLOR_BOLD}2. 글로벌 외환 (FX Rates — 6개 지표){COLOR_RESET}")
+    print(f"\n{COLOR_BOLD}2. 주요 외환 및 달러 인덱스 (Foreign Exchange — 6개 지표){COLOR_RESET}")
     fx_rows = []
     for r in categories.get("FX", []):
-        c_str = f"{r['current']:,.4f}" if "EUR" in r['name'] or "GBP" in r['name'] or "CNH" in r['name'] else f"{r['current']:,.2f}" if r['current'] is not None else "N/A"
+        c_str = f"{r['current']:.4f}" if (r['current'] is not None and r['unit'] == "$") else (f"{r['current']:,.2f}" if r['current'] is not None else "N/A")
         chg_str = format_change(r['change'], is_pct=False)
         pct_str = format_change(r['pct_change'], is_pct=True)
         fx_rows.append([r['name'], r['symbol'], c_str, chg_str, pct_str, r['price_type'], r['actual_as_of_kst']])
     print(tabulate(fx_rows, headers=["지표", "심볼", "현재환율", "전일대비", "등락률(%)", "가격기준", "수집기준시각(KST)"], tablefmt="rounded_grid"))
 
-    # 3. 채권 (6개)
-    print(f"\n{COLOR_BOLD}3. 글로벌 벤치마크 국채 금리 (Bonds — 6개 지표){COLOR_RESET}")
+    # 3. 국채 (6개)
+    print(f"\n{COLOR_BOLD}3. 주요국 국채 수익률 (Government Bond Yields — 6개 만기){COLOR_RESET}")
     bond_rows = []
     for r in categories.get("BOND", []):
-        c_str = f"{r['current']:.3f}%" if r['current'] is not None else "N/A"
+        c_str = f"{r['current']:.2f}%" if r['current'] is not None else "N/A"
         bp_str = format_change(r['bp_change'], is_bp=True)
         pct_str = format_change(r['pct_change'], is_pct=True)
         bond_rows.append([r['name'], r['symbol'], c_str, bp_str, pct_str, r['data_source'], r['actual_as_of_kst']])
@@ -99,11 +98,11 @@ def print_market_tables(processed_data: dict):
     print(f"\n{COLOR_BOLD}4. 주요 원자재 (Commodities — 6개 지표){COLOR_RESET}")
     comm_rows = []
     for r in categories.get("COMMODITY", []):
-        c_str = f"{r['current']:,.2f} {r['unit']}" if r['current'] is not None else "N/A"
+        c_str = f"${r['current']:,.2f}" if r['current'] is not None else "N/A"
         chg_str = format_change(r['change'], is_pct=False)
         pct_str = format_change(r['pct_change'], is_pct=True)
         comm_rows.append([r['name'], r['symbol'], c_str, chg_str, pct_str, r['price_type'], r['actual_as_of_kst']])
-    print(tabulate(comm_rows, headers=["품목명", "심볼", "현재가격", "전일대비", "등락률(%)", "가격기준", "수집기준시각(KST)"], tablefmt="rounded_grid"))
+    print(tabulate(comm_rows, headers=["품목명", "심볼", "가격", "전일대비", "등락률(%)", "가격기준", "수집기준시각(KST)"], tablefmt="rounded_grid"))
 
     # 5. 핵심 스프레드
     print(f"\n{COLOR_BOLD}5. FICC 핵심 장단기 & 국가간 금리 스프레드 (Calculated Spreads){COLOR_RESET}")
@@ -119,7 +118,7 @@ def run_pipeline(save_data: bool = True):
     cutoff_time = now_kst.replace(hour=16, minute=30, second=0, microsecond=0)
     is_post_1630 = now_kst >= cutoff_time
 
-    print_header(now_kst, is_post_1630)
+    print_header(now_kst, cutoff_time, is_post_1630)
 
     # 1. 시장 데이터 수집 (28개)
     collectors = [EquityCollector(), FxCollector(), BondCollector(), CommodityCollector()]
@@ -141,13 +140,13 @@ def run_pipeline(save_data: bool = True):
     raw_cal_report = calendar_collector.collect_all(now_kst)
     processed_events = MacroEventProcessor.process_calendar_events(raw_cal_report.get("raw_events", []), now_kst)
 
-    # 4. Single Source of Truth 저장
+    # 4. Single Source of Truth 저장 및 16:30 공식 SSOT 보호
     proc_path = None
     if save_data:
         saver = DataSaver(base_data_dir="data")
-        raw_market_path = saver.save_raw_market(all_raw_market_records, now_kst, is_post_1630)
-        raw_news_path = saver.save_raw_news(raw_news_report, now_kst, is_post_1630)
-        raw_events_path = saver.save_raw_events(raw_cal_report, now_kst, is_post_1630)
+        raw_market_path = saver.save_raw_market(all_raw_market_records, now_kst, cutoff_time, is_post_1630)
+        raw_news_path = saver.save_raw_news(raw_news_report, now_kst, cutoff_time, is_post_1630)
+        raw_events_path = saver.save_raw_events(raw_cal_report, now_kst, cutoff_time, is_post_1630)
 
         raw_snapshots = {
             "market": raw_market_path,
@@ -160,6 +159,7 @@ def run_pipeline(save_data: bool = True):
             processed_news=processed_news,
             processed_events=processed_events,
             run_time_kst=now_kst,
+            cutoff_kst=cutoff_time,
             is_post_1630=is_post_1630,
             raw_snapshots=raw_snapshots
         )
@@ -167,8 +167,10 @@ def run_pipeline(save_data: bool = True):
         date_str = now_kst.strftime("%Y-%m-%d")
         print("\n" + "=" * 115)
         print(f"{COLOR_GREEN}{COLOR_BOLD}💾 [1~3단계 원천 및 가공 데이터 영구 저장 완료 (SSOT)]{COLOR_RESET}")
-        print(f" • 원천 데이터 (Raw)    : {COLOR_CYAN}data/raw/{date_str}/ (market.json, news.json, events.json){COLOR_RESET}")
-        print(f" • 가공 통합본 (SSOT)   : {COLOR_GREEN}{COLOR_BOLD}{proc_path}{COLOR_RESET}")
+        print(f" • 보고서 기준 시각 (Cutoff) : {COLOR_BOLD}{cutoff_time.strftime('%Y-%m-%d %H:%M:%S')} KST (16:30 고정){COLOR_RESET}")
+        print(f" • 실제 실행 시각 (Run Time): {COLOR_CYAN}{now_kst.strftime('%Y-%m-%d %H:%M:%S')} KST{COLOR_RESET}")
+        print(f" • 원천 데이터 (Raw)         : {COLOR_CYAN}data/raw/{date_str}/ (market.json, news.json, events.json){COLOR_RESET}")
+        print(f" • 공식 통합본 (SSOT)        : {COLOR_GREEN}{COLOR_BOLD}{proc_path}{COLOR_RESET}")
         print("=" * 115)
 
     # 5. 4~5단계 리포트 및 블로그 원고(HTML / TXT) 생성

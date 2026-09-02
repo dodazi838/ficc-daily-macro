@@ -30,11 +30,16 @@ ENV/
 Thumbs.db
 desktop.ini
 
-# 5. 수집된 일자별 데이터 파일 전체 제외 (디렉토리 구조는 .gitkeep으로 보존)
+# 5. 수집 및 생성 데이터 파일 제외 (디렉토리 구조는 .gitkeep으로 보존)
 data/**/*.json
 data/*.json
+data/cache/*
+data/generated/*.html
+data/generated/*.txt
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+!data/generated/.gitkeep
+!data/cache/.gitkeep
 
 # 6. 임시 및 백업 파일
 *.bak

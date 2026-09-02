@@ -310,7 +310,7 @@ class NaverBlogFormatter:
         today_night = economic_events.get("today_night_events", [])
         if today_night:
             lines.append("금일 밤(16:30 이후) 주요 발표 예정 지표")
-            lines.append(f"{'국가':<6} | {'발표예정(KST)':<16} | {'중요도':<6} | {'지표명 (한글)':<32} | {'예상치':>8}")
+            lines.append(f"{'국가':<6} | {'예정시각':<16} | {'중요도':<6} | {'지표명 (한글)':<32} | {'예상치':>8}")
             lines.append("-" * 75)
             for ev in today_night[:8]:
                 imp_star = "★★★" if ev.get("importance") == "HIGH" else ("★★" if ev.get("importance") == "MEDIUM" else "★")
@@ -500,7 +500,7 @@ class NaverBlogFormatter:
             # 네이버 스마트에디터 복사·붙여넣기 시에도 열 너비가 균등 배분되지 않도록 전용 폭/정렬 지정
             html.append(cls._render_table_html(
                 title="금일 밤(16:30 이후) 주요 발표 예정 지표",
-                headers=["국가", "예정시각(KST)", "중요도", "지표명", "시장예상치"],
+                headers=["국가", "예정시각", "중요도", "지표명", "시장예상치"],
                 rows=event_rows,
                 font_family=FONT_FAMILY,
                 col_widths=["10%", "17%", "12%", "43%", "18%"],

@@ -83,7 +83,7 @@ def print_market_tables(processed_data: dict):
         chg_str = format_change(r['change'], is_pct=False)
         pct_str = format_change(r['pct_change'], is_pct=True)
         fx_rows.append([r['name'], r['symbol'], c_str, chg_str, pct_str, r['price_type'], r['actual_as_of_kst']])
-    print(tabulate(fx_rows, headers=["통화쌍", "심볼", "현재환율", "전일대비", "등락률(%)", "가격기준", "수집기준시각(KST)"], tablefmt="rounded_grid"))
+    print(tabulate(fx_rows, headers=["지표", "심볼", "현재환율", "전일대비", "등락률(%)", "가격기준", "수집기준시각(KST)"], tablefmt="rounded_grid"))
 
     # 3. 채권 (6개)
     print(f"\n{COLOR_BOLD}3. 글로벌 벤치마크 국채 금리 (Bonds — 6개 지표){COLOR_RESET}")

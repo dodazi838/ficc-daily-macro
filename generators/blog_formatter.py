@@ -225,7 +225,7 @@ class NaverBlogFormatter:
 
         # [외환 표]
         lines.append("2. 외환")
-        lines.append(f"{'통화쌍 / 지표':<16} | {'현재환율':>12} | {'등락률':>10}")
+        lines.append(f"{'지표':<16} | {'현재환율':>12} | {'등락률':>10}")
         lines.append("-" * 46)
         for it in categories.get("FX", []):
             d_name = cls.clean_display_name(it['name'])
@@ -376,7 +376,7 @@ class NaverBlogFormatter:
         # [2] 외환 표 (15px)
         html.append(cls._render_table_html(
             title="2. 외환",
-            headers=["통화쌍 / 지표", "현재환율", "등락률"],
+            headers=["지표", "현재환율", "등락률"],
             rows=[
                 [
                     cls.clean_display_name(it['name']),

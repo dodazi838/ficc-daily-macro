@@ -34,11 +34,18 @@ desktop.ini
 data/**/*.json
 data/*.json
 data/cache/*
+data/generated/**/*.html
+data/generated/**/*.txt
 data/generated/*.html
 data/generated/*.txt
+data/output/**/*.html
+data/output/**/*.txt
+data/output/*.html
+data/output/*.txt
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/generated/.gitkeep
+!data/output/.gitkeep
 !data/cache/.gitkeep
 
 # 6. 임시 및 백업 파일

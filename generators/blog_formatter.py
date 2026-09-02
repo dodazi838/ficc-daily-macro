@@ -183,8 +183,9 @@ class NaverBlogFormatter:
 
     @classmethod
     def _validate_input_report(cls, report_data: Dict[str, Any]):
-        val_sum = report_data.get("validation_summary", {})
-        if not val_sum.get("passed", False):
+        val_sum = report_data.get("validation_summary") or report_data.get("final_summary", {})
+        is_passed = val_sum.get("passed", False) or report_data.get("final_passed", False)
+        if not is_passed:
             errors = val_sum.get("errors", [])
             raise ValueError(f"검증을 통과하지 못한 리포트는 블로그 원고로 렌더링할 수 없습니다. (적발된 오류: {len(errors)}건)")
 
@@ -194,7 +195,7 @@ class NaverBlogFormatter:
         cls._validate_input_report(report_data)
 
         report_date = report_data.get("report_date", "")
-        content = report_data.get("content", {})
+        content = report_data.get("content") or report_data.get("validated_content") or {}
         categories = processed_market_data.get("market_data", {}).get("categories", {})
         spreads = processed_market_data.get("market_data", {}).get("spreads", [])
         economic_events = processed_market_data.get("economic_events", {})
@@ -328,7 +329,7 @@ class NaverBlogFormatter:
         cls._validate_input_report(report_data)
 
         report_date = report_data.get("report_date", "")
-        content = report_data.get("content", {})
+        content = report_data.get("content") or report_data.get("validated_content") or {}
         categories = processed_market_data.get("market_data", {}).get("categories", {})
         spreads = processed_market_data.get("market_data", {}).get("spreads", [])
         economic_events = processed_market_data.get("economic_events", {})

@@ -147,12 +147,12 @@ def run_pipeline(save_data: bool = True):
         saver = DataSaver(base_data_dir="data")
         raw_market_path = saver.save_raw_market(all_raw_market_records, now_kst, is_post_1630)
         raw_news_path = saver.save_raw_news(raw_news_report, now_kst, is_post_1630)
-        raw_cal_path = saver.save_raw_calendar(raw_cal_report, now_kst, is_post_1630)
+        raw_events_path = saver.save_raw_events(raw_cal_report, now_kst, is_post_1630)
 
         raw_snapshots = {
             "market": raw_market_path,
             "news": raw_news_path,
-            "calendar": raw_cal_path
+            "events": raw_events_path
         }
 
         proc_path = saver.save_processed(
@@ -164,9 +164,11 @@ def run_pipeline(save_data: bool = True):
             raw_snapshots=raw_snapshots
         )
 
+        date_str = now_kst.strftime("%Y-%m-%d")
         print("\n" + "=" * 115)
-        print(f"{COLOR_GREEN}{COLOR_BOLD}💾 [1~3단계 데이터 영구 저장 완료 (SSOT)]{COLOR_RESET}")
-        print(f" • 가공 통합본 (SSOT) : {COLOR_GREEN}{COLOR_BOLD}{proc_path}{COLOR_RESET}")
+        print(f"{COLOR_GREEN}{COLOR_BOLD}💾 [1~3단계 원천 및 가공 데이터 영구 저장 완료 (SSOT)]{COLOR_RESET}")
+        print(f" • 원천 데이터 (Raw)    : {COLOR_CYAN}data/raw/{date_str}/ (market.json, news.json, events.json){COLOR_RESET}")
+        print(f" • 가공 통합본 (SSOT)   : {COLOR_GREEN}{COLOR_BOLD}{proc_path}{COLOR_RESET}")
         print("=" * 115)
 
     # 5. 4~5단계 리포트 및 블로그 원고(HTML / TXT) 생성
@@ -185,15 +187,17 @@ def run_pipeline(save_data: bool = True):
                 print(f" • 모델: {COLOR_CYAN}{usage.get('model')}{COLOR_RESET} | 총 토큰: {usage.get('total_tokens')} (입력: {usage.get('prompt_tokens')}, 출력: {usage.get('completion_tokens')}, Thinking: {usage.get('thinking_tokens')})")
                 print(f" • 예상 비용: {COLOR_CYAN}${usage.get('estimated_cost_usd'):.6f}{COLOR_RESET}")
                 print(f" • 팩트 검증: {COLOR_GREEN}PASS (신뢰도: {val.get('overall_confidence')}){COLOR_RESET} | 검증된 수치: {val.get('fact_check_details', {}).get('verified_numbers_count')}개")
-                print(f"\n • 저장된 4대 산출물:")
-                print(f"   1) 원본 AI 리포트   : {COLOR_CYAN}{res.get('report_json_path')}{COLOR_RESET}")
-                print(f"   2) 검증된 리포트   : {COLOR_CYAN}{res.get('validated_json_path')}{COLOR_RESET}")
-                print(f"   3) 블로그 게시용 HTML: {COLOR_GREEN}{COLOR_BOLD}{res.get('blog_html_path')}{COLOR_RESET}")
-                print(f"   4) 블로그 검수용 TXT : {COLOR_CYAN}{res.get('blog_text_path')}{COLOR_RESET}")
+                print(f"\n • 저장된 날짜별 산출물 구조:")
+                print(f"   1) Gemini 1차 초안  : {COLOR_CYAN}{res.get('gemini_draft_path')}{COLOR_RESET}")
+                if res.get('corrected_draft_path'):
+                    print(f"   2) 자동 수정본(2차) : {COLOR_CYAN}{res.get('corrected_draft_path')}{COLOR_RESET}")
+                print(f"   3) 팩트 검증 결과   : {COLOR_CYAN}{res.get('validation_json_path')}{COLOR_RESET}")
+                print(f"   4) 블로그 게시용 HTML: {COLOR_GREEN}{COLOR_BOLD}{res.get('blog_html_path')}{COLOR_RESET}")
+                print(f"   5) 블로그 검수용 TXT : {COLOR_CYAN}{res.get('blog_text_path')}{COLOR_RESET}")
             else:
                 print(f"\n{COLOR_RED}{COLOR_BOLD}⛔ [게시 차단] FactValidator 검증 최종 실패 (FAIL: {len(val.get('errors', []))}건 에러, {res.get('attempts')}회 시도 후 중단){COLOR_RESET}")
                 print(f" • 블로그 게시물(blog_post.html / blog_post.txt) 생성을 엄격히 차단했습니다.")
-                print(f" • 실패 상세 내역 저장 경로: {COLOR_RED}{res.get('validation_failed_path')}{COLOR_RESET}")
+                print(f" • 검증 상세 내역 저장 경로: {COLOR_RED}{res.get('validation_json_path')}{COLOR_RESET}")
                 print(f" • [적발된 오류 목록]:")
                 for err in val.get("errors", []):
                     print(f"   ❌ {err}")

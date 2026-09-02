@@ -360,19 +360,68 @@ class FactValidator:
     def _validate_daily_event_section(cls, text: str, raw_context: Dict[str, Any]) -> List[str]:
         """
         Daily Event 전용 검증 게이트키퍼:
-        1. 본문에 언급된 경제지표가 오늘 16:30 이후 발표 예정 목록(today_night)에 실제로 존재하는지 확인
-        2. 당일 야간 발표 목록에 없는 지표(ISM PMI, JOLTS, 비농업고용, CPI 등)를 언급했을 경우 즉시 ERROR 적발
-        3. 본문에 언급된 수치가 해당 이벤트의 실제 forecast / prior 와 일치하는지 확인
+        1. [Canonical 지표 검증] 본문에 언급된 경제지표가 오늘 16:30 이후 발표 예정 목록(today_night)에 실제로 존재하는지 확인
+        2. [과거 지표 차단] 16:30 이전 이미 발표된 과거 지표(day_review)나 미예정 지표 인용 시 즉시 ERROR
+        3. [발표 시각 일치 검증] 본문에 언급된 시각(HH:MM)이 canonical today_night 이벤트의 실제 발표시각과 일치하는지 확인
+        4. [시장 예상치(forecast) 정합성 검증] 본문에 언급된 예상치가 canonical forecast와 100% 일치하는지, 원천에 없는 예상치를 날조했는지 확인
+        5. [빈 목록 안전성] today_night가 비어있을 때 허위 지표 생성을 차단
         """
         errors = []
         if not text:
             return errors
 
-        today_night = raw_context.get("economic_calendar", {}).get("today_night", [])
+        economic_cal = raw_context.get("economic_calendar", {})
+        today_night = economic_cal.get("today_night", [])
+        day_review = economic_cal.get("day_review", [])
+
+        # 0. today_night가 비어있는 경우
+        if not today_night:
+            # 본문에 구체적인 이벤트 발표를 언급했는지 확인
+            if any(w in text for w in ["발표될 예정", "발표를 앞두고", "예상치", "공개될"]):
+                errors.append("[daily_event_watchpoints] 금일 16:30 이후 예정된 지표가 없으나 본문에 허위 발표 일정이 작성되었습니다.")
+            return errors
+
+        # Canonical 데이터 코퍼스 및 매핑 구축
         today_night_text_corpus = []
+        canonical_times = set()
+        canonical_forecast_nums = set()
+        canonical_event_forecast_map = {}
+
         for ev in today_night:
-            today_night_text_corpus.append(ev.get("event_name", "").lower())
-            today_night_text_corpus.append(ev.get("event_name_kor", "").lower())
+            ev_name = ev.get("event_name", "")
+            ev_kor = ev.get("event_name_kor", "")
+            today_night_text_corpus.append(ev_name.lower())
+            today_night_text_corpus.append(ev_kor.lower())
+
+            # 시각 (HH:MM)
+            sched_time = ev.get("scheduled_time_kst") or (ev.get("scheduled_at", "")[11:16] if len(ev.get("scheduled_at", "")) >= 16 else "")
+            if sched_time:
+                canonical_times.add(sched_time)
+                # "19시 45분", "19시", "01시 15분", "1시 15분" 형태 변형 허용
+                h_str, m_str = sched_time.split(":")
+                h_int = int(h_str)
+                m_int = int(m_str)
+                canonical_times.add(f"{h_int}:{m_str}")
+                canonical_times.add(f"{h_int}시 {m_int}분" if m_int > 0 else f"{h_int}시")
+                canonical_times.add(f"{h_str}시 {m_str}분" if m_int > 0 else f"{h_str}시")
+
+            # 예상치 (forecast)
+            f_val = ev.get("forecast")
+            if f_val and str(f_val).strip() not in ["-", "None", ""]:
+                f_str = str(f_val).strip()
+                canonical_event_forecast_map[ev_name.lower()] = f_str
+                canonical_event_forecast_map[ev_kor.lower()] = f_str
+                # 예상치 내 숫자 추출
+                f_nums = re.findall(r'[-+]?\d+(?:\.\d+)?', f_str)
+                for fn in f_nums:
+                    try:
+                        canonical_forecast_nums.add(float(fn))
+                        canonical_forecast_nums.add(abs(float(fn)))
+                    except ValueError:
+                        pass
+            else:
+                canonical_event_forecast_map[ev_name.lower()] = None
+                canonical_event_forecast_map[ev_kor.lower()] = None
 
         combined_corpus = " ".join(today_night_text_corpus)
 
@@ -380,13 +429,13 @@ class FactValidator:
         KNOWN_INDICATORS = {
             "ISM 제조업/서비스업 PMI": ["ism", "제조업 pmi", "서비스업 pmi", "ism 제조업", "ism 서비스업"],
             "JOLTS 구인건수": ["jolts", "구인건수", "구인이직"],
-            "비농업 고용지수(NFP)": ["비농업 고용", "nfp", "non-farm payroll", "고용보고서"],
-            "ADP 비농업 고용": ["adp", "adp 고용", "민간 고용"],
+            "비농업 고용지수(NFP)": ["비농업 고용", "비농업 고용지수", "nfp", "non-farm payroll", "고용보고서"],
+            "ADP 비농업 고용": ["adp", "adp 비농업", "adp 고용", "민간 고용"],
             "CPI (소비자물가)": ["cpi", "소비자물가", "소비자물가지수"],
             "PPI (생산자물가)": ["ppi", "생산자물가", "생산자물가지수"],
             "PCE 물가지수": ["pce", "개인소비지출", "근원 pce"],
             "GDP 성장률": ["gdp", "경제성장률 속보치"],
-            "신규 실업수당 청구": ["실업수당", "신규 실업수당", "jobless claims"],
+            "신규 실업수당 청구": ["신규 실업수당", "실업수당 청구", "jobless claims"],
             "소매판매": ["소매판매", "retail sales"],
             "BOC 통화정책/기준금리": ["boc", "캐나다 중앙은행", "캐나다 기준금리", "캐나다 금리"],
             "FOMC / Fed 금리": ["fomc", "연준 기준금리", "fed 금리결정", "연방공개시장위원회"],
@@ -399,14 +448,56 @@ class FactValidator:
 
         text_lower = text.lower()
 
-        # 본문에 언급된 지표가 오늘 야간 발표 목록(today_night)에 존재하는지 전수 대조
+        # 1. 본문에 언급된 지표가 오늘 야간 발표 목록(today_night)에 존재하는지 전수 대조
         for ind_name, keywords in KNOWN_INDICATORS.items():
             if any(kw in text_lower for kw in keywords):
-                # 오늘 야간 코퍼스에 키워드가 있는지 확인
                 if not any(kw in combined_corpus for kw in keywords):
                     errors.append(
                         f"[daily_event_watchpoints] 금일 야간 발표 예정 목록에 없는 지표 인용 오류: "
                         f"'{ind_name}' 관련 지표는 오늘 16:30 이후 발표 예정 목록(today_night)에 존재하지 않습니다."
                     )
+
+        # 2. 이미 발표된 과거 지표(day_review) 인용 여부 검사
+        day_review_corpus = []
+        for dev in day_review:
+            day_review_corpus.append(dev.get("event_name", "").lower())
+            day_review_corpus.append(dev.get("event_name_kor", "").lower())
+        day_combined = " ".join(day_review_corpus)
+
+        for ind_name, keywords in KNOWN_INDICATORS.items():
+            if any(kw in text_lower for kw in keywords):
+                if any(kw in day_combined for kw in keywords) and not any(kw in combined_corpus for kw in keywords):
+                    errors.append(
+                        f"[daily_event_watchpoints] 이미 발표된 과거 지표 인용 오류: "
+                        f"'{ind_name}'은 16:30 이전에 이미 발표된 지표로, 야간 발표 예정 지표(upcoming)로 작성할 수 없습니다."
+                    )
+
+        # 3. 본문에 언급된 시각(HH:MM 또는 X시 Y분) 정합성 검사
+        time_matches = re.findall(r'(?<!\d)([0-2]?\d:[0-5]\d)(?!\d)', text)
+        for tm in time_matches:
+            # 16:30은 기준시각으로 언급될 수 있으므로 예외
+            if tm in ["16:30", "16:30:00"]:
+                continue
+            # "01:15" vs "1:15" 정규화
+            tm_norm = tm if len(tm) == 5 else f"0{tm}"
+            if tm not in canonical_times and tm_norm not in canonical_times:
+                errors.append(
+                    f"[daily_event_watchpoints] canonical 일정과 불일치하는 발표 시각 인용: "
+                    f"'{tm}'은 당일 16:30 이후 발표 예정 목록의 공식 발표시각과 불일치합니다."
+                )
+
+        # 4. 시장 예상치(forecast) 날조 및 불일치 검증
+        # '예상치 55.2', '예상 47K', '전망치 0.7%' 등 검출
+        forecast_mentions = re.findall(r'(?:예상치?|전망치?|컨센서스)\s*(?:는|가|로|:)?\s*([-+]?\d+(?:\.\d+)?)\s*(?:k|m|b|%|pt|만|억)?', text, re.IGNORECASE)
+        for fm in forecast_mentions:
+            try:
+                fm_float = float(fm)
+                if fm_float not in canonical_forecast_nums and abs(fm_float) not in canonical_forecast_nums:
+                    errors.append(
+                        f"[daily_event_watchpoints] 원천 데이터에 없는 시장 예상치(forecast) 인용/날조 오류: "
+                        f"수치 '{fm}'은 당일 야간 발표 예정 지표의 공식 예상치 목록에 존재하지 않습니다."
+                    )
+            except ValueError:
+                pass
 
         return errors

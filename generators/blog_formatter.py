@@ -319,6 +319,9 @@ class NaverBlogFormatter:
                 kor_event_name = cls.translate_event_name(ev.get("event_name", ""), ev.get("country", ""))
                 lines.append(f"{ev.get('country', ''):<6} | {time_short:<16} | {imp_star:<6} | {kor_event_name[:30]:<32} | {f_val:>8}")
             lines.append("")
+        else:
+            lines.append("※ 금일 16:30 이후 주요 발표 예정 지표 없음")
+            lines.append("")
 
         lines.append("=" * 65)
         return "\n".join(lines)
@@ -503,6 +506,8 @@ class NaverBlogFormatter:
                 col_widths=["10%", "17%", "12%", "43%", "18%"],
                 col_aligns=["center", "center", "center", "left", "right"]
             ))
+        else:
+            html.append(f'<p style="font-family: {FONT_FAMILY}; font-size: 14px; font-weight: normal; color: #6c757d; margin: 10px 0 20px 0;"><span style="font-size: 14px; color: #6c757d;">※ 금일 16:30 이후 주요 발표 예정 지표 없음</span></p>')
 
         html.append('</div>')
         return "\n".join(html)

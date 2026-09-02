@@ -241,7 +241,7 @@ class NaverBlogFormatter:
         lines.append("-" * 46)
         for it in categories.get("BOND", []):
             d_name = cls.clean_display_name(it['name'])
-            curr_str = f"{it['current']:.3f}%" if it.get("current") is not None else "-"
+            curr_str = f"{it['current']:.2f}%" if it.get("current") is not None else "-"
             bp_val = it.get("bp_change")
             bp_str = f"{bp_val:+.1f} bp" if bp_val is not None else "-"
             lines.append(f"{d_name:<16} | {curr_str:>12} | {bp_str:>10}")
@@ -394,7 +394,7 @@ class NaverBlogFormatter:
         bond_rows = [
             [
                 cls.clean_display_name(it['name']),
-                f"{it['current']:.3f}%" if it.get("current") is not None else "-",
+                f"{it['current']:.2f}%" if it.get("current") is not None else "-",
                 cls._format_bp_html(it.get("bp_change"))
             ]
             for it in categories.get("BOND", [])

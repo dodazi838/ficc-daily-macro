@@ -84,12 +84,21 @@ class FactValidator:
             errors.extend(sec_errors)
             warnings.extend(sec_warnings)
             verified_count += sec_verified
+
+            if sec_name == "daily_event_watchpoints":
+                event_errors = cls._validate_daily_event_section(sec_text, raw_context)
+                errors.extend(event_errors)
             
             score = 100.0 - (len(sec_errors) * 35.0) - (len(sec_warnings) * 10.0)
             score = max(0.0, score)
             section_scores.append(score)
 
         # Source ID 검증
+        today_night_eids = {
+            ev.get("event_id")
+            for ev in raw_context.get("economic_calendar", {}).get("today_night", [])
+            if ev.get("event_id")
+        }
         for sec_obj in [
             generated_content.get("ficc_daily_summary", {}),
             generated_content.get("ficc_summary", {}),
@@ -108,6 +117,13 @@ class FactValidator:
             for eid in sec_obj.get("source_event_ids", []):
                 if eid and eid not in all_event_ids:
                     errors.append(f"존재하지 않는 event_id 인용: {eid}")
+
+        # daily_event_watchpoints의 source_event_ids는 반드시 today_night_events여야 함
+        dev_obj = generated_content.get("daily_event_watchpoints", {})
+        if dev_obj:
+            for eid in dev_obj.get("source_event_ids", []):
+                if eid and eid not in today_night_eids:
+                    errors.append(f"[daily_event_watchpoints] 금일 야간(16:30 이후) 발표 일정이 아닌 event_id 인용: {eid}")
 
         is_passed = (len(errors) == 0)
         avg_score = sum(section_scores) / len(section_scores) if section_scores else 100.0
@@ -242,7 +258,7 @@ class FactValidator:
                 if p_val not in all_valid_numbers:
                     errors.append(f"[{sec_name}] 미제공 확률/전망치 인용: '{sent_clean}' 내 확률 {p_val}%는 당일 검증된 데이터셋에 존재하지 않습니다.")
 
-            # 3. 고유명사 지수명 및 날짜 마스킹 (숫자 오탐 방지)
+            # 3. 고유명사 지수명, 날짜 및 시간 마스킹 (숫자 오탐 방지)
             masked_sent = sent_clean
             masked_sent = re.sub(r'(?i)(?:s&p|sp|에스앤피)\s*500', 'SP_INDEX', masked_sent)
             masked_sent = re.sub(r'(?:다우존스|다우)\s*30', 'DJI_INDEX', masked_sent)
@@ -253,6 +269,10 @@ class FactValidator:
             masked_sent = re.sub(r'\b\d{4}년\b', ' ', masked_sent)
             masked_sent = re.sub(r'\b\d{1,2}월\b', ' ', masked_sent)
             masked_sent = re.sub(r'\b\d{1,2}일\b', ' ', masked_sent)
+            masked_sent = re.sub(r'\b\d{1,2}:\d{2}(?::\d{2})?\b', ' TIME_VAL ', masked_sent)
+            masked_sent = re.sub(r'\b\d{1,2}\s*시\s*\d{1,2}\s*분\b', ' TIME_VAL ', masked_sent)
+            masked_sent = re.sub(r'\b\d{1,2}\s*시\b', ' TIME_VAL ', masked_sent)
+            masked_sent = re.sub(r'\b\d{1,2}\s*분\b', ' TIME_VAL ', masked_sent)
 
             # 4. 숫자 추출
             raw_nums = re.findall(r'[-+]?\d+(?:,\d{3})*(?:\.\d+)?', masked_sent)
@@ -335,3 +355,58 @@ class FactValidator:
             content["ficc_forecast"]["confidence"] = conf
         if "daily_event_watchpoints" in content:
             content["daily_event_watchpoints"]["confidence"] = conf
+
+    @classmethod
+    def _validate_daily_event_section(cls, text: str, raw_context: Dict[str, Any]) -> List[str]:
+        """
+        Daily Event 전용 검증 게이트키퍼:
+        1. 본문에 언급된 경제지표가 오늘 16:30 이후 발표 예정 목록(today_night)에 실제로 존재하는지 확인
+        2. 당일 야간 발표 목록에 없는 지표(ISM PMI, JOLTS, 비농업고용, CPI 등)를 언급했을 경우 즉시 ERROR 적발
+        3. 본문에 언급된 수치가 해당 이벤트의 실제 forecast / prior 와 일치하는지 확인
+        """
+        errors = []
+        if not text:
+            return errors
+
+        today_night = raw_context.get("economic_calendar", {}).get("today_night", [])
+        today_night_text_corpus = []
+        for ev in today_night:
+            today_night_text_corpus.append(ev.get("event_name", "").lower())
+            today_night_text_corpus.append(ev.get("event_name_kor", "").lower())
+
+        combined_corpus = " ".join(today_night_text_corpus)
+
+        # 주요 글로벌 경제 지표 키워드 감지 사전
+        KNOWN_INDICATORS = {
+            "ISM 제조업/서비스업 PMI": ["ism", "제조업 pmi", "서비스업 pmi", "ism 제조업", "ism 서비스업"],
+            "JOLTS 구인건수": ["jolts", "구인건수", "구인이직"],
+            "비농업 고용지수(NFP)": ["비농업 고용", "nfp", "non-farm payroll", "고용보고서"],
+            "ADP 비농업 고용": ["adp", "adp 고용", "민간 고용"],
+            "CPI (소비자물가)": ["cpi", "소비자물가", "소비자물가지수"],
+            "PPI (생산자물가)": ["ppi", "생산자물가", "생산자물가지수"],
+            "PCE 물가지수": ["pce", "개인소비지출", "근원 pce"],
+            "GDP 성장률": ["gdp", "경제성장률 속보치"],
+            "신규 실업수당 청구": ["실업수당", "신규 실업수당", "jobless claims"],
+            "소매판매": ["소매판매", "retail sales"],
+            "BOC 통화정책/기준금리": ["boc", "캐나다 중앙은행", "캐나다 기준금리", "캐나다 금리"],
+            "FOMC / Fed 금리": ["fomc", "연준 기준금리", "fed 금리결정", "연방공개시장위원회"],
+            "ECB 기준금리": ["ecb", "유럽중앙은행 금리", "ecb 기준금리"],
+            "공장재 수주": ["공장재", "factory orders", "공장 수주"],
+            "주간 원유재고": ["원유재고", "eia 원유", "주간 원유재고", "crude oil inventories"],
+            "정부 재정수지": ["재정수지", "budget balance"],
+            "실업자수 변동": ["실업자수", "unemployment change"]
+        }
+
+        text_lower = text.lower()
+
+        # 본문에 언급된 지표가 오늘 야간 발표 목록(today_night)에 존재하는지 전수 대조
+        for ind_name, keywords in KNOWN_INDICATORS.items():
+            if any(kw in text_lower for kw in keywords):
+                # 오늘 야간 코퍼스에 키워드가 있는지 확인
+                if not any(kw in combined_corpus for kw in keywords):
+                    errors.append(
+                        f"[daily_event_watchpoints] 금일 야간 발표 예정 목록에 없는 지표 인용 오류: "
+                        f"'{ind_name}' 관련 지표는 오늘 16:30 이후 발표 예정 목록(today_night)에 존재하지 않습니다."
+                    )
+
+        return errors

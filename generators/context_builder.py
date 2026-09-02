@@ -104,12 +104,16 @@ class AIContextBuilder:
                 })
 
         # 3. 경제 캘린더 정제 (DAY_REVIEW + TODAY_NIGHT)
+        # ※ 16:30 KST 이후 야간 발표 예정 이벤트는 단일 원천 데이터(SSOT)로 관리
+        from generators.blog_formatter import NaverBlogFormatter
+        
         calendar = {
             "day_review": [
                 {
                     "event_id": ev.get("event_id"),
                     "country": ev.get("country"),
                     "event_name": ev.get("event_name"),
+                    "event_name_kor": NaverBlogFormatter.translate_event_name(ev.get("event_name", ""), ev.get("country", "")),
                     "scheduled_at": ev.get("scheduled_at_kst"),
                     "importance": ev.get("importance"),
                     "actual": ev.get("actual"),
@@ -124,7 +128,9 @@ class AIContextBuilder:
                     "event_id": ev.get("event_id"),
                     "country": ev.get("country"),
                     "event_name": ev.get("event_name"),
+                    "event_name_kor": NaverBlogFormatter.translate_event_name(ev.get("event_name", ""), ev.get("country", "")),
                     "scheduled_at": ev.get("scheduled_at_kst"),
+                    "scheduled_time_kst": ev.get("scheduled_at_kst", "")[11:16] if len(ev.get("scheduled_at_kst", "")) >= 16 else "",
                     "importance": ev.get("importance"),
                     "forecast": ev.get("forecast"),
                     "previous": ev.get("previous"),

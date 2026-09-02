@@ -7,12 +7,20 @@
 """
 
 import os
+import sys
 import json
 import datetime
 from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 
 load_dotenv()
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 
 from generators.context_builder import AIContextBuilder
 from generators.prompt_manager import PromptManager
@@ -94,8 +102,9 @@ class FiccReportGenerator:
 
 [절대 수정 지침]
 1. 위에서 적발된 허위/미제공 수치(예: 미제공 이동평균선 '50일선', 임의의 확률 % '68%', 컨텍스트에 없는 수치)를 본문에서 즉시 완전히 삭제하거나, 반드시 아래 [Context JSON]에 제공된 정확한 당일 시장 데이터 수치로만 대체하라.
-2. 당일 시장 데이터에 없는 숫자를 절대 새로 추정하거나 날조하지 마라.
-3. 지정된 JSON 포맷을 완벽히 준수하여 다시 작성하라.
+2. daily_event_watchpoints 본문은 반드시 [Context JSON]의 economic_calendar.today_night 에 실제로 존재하는 지표(예: ADP 비농업 고용, BOC 기준금리, EIA 원유재고 등)와 제공된 forecast 예상치만을 다루어라. 목록에 없는 지표(ISM PMI, JOLTS 등)는 완전히 제거하라.
+3. 당일 시장 데이터 및 캘린더에 없는 숫자를 절대 새로 추정하거나 날조하지 마라.
+4. 지정된 JSON 포맷을 완벽히 준수하여 다시 작성하라.
 
 [Context JSON]
 {json.dumps(context, ensure_ascii=False, indent=2)}

@@ -36,7 +36,12 @@ class PromptManager:
 7. 기준 시점(as_of) 엄수 및 시점 혼동 방지:
    - 16:30 KST 집계 시점에서 국내/아시아 증시 및 원/달러, 한국 국채는 '당일 종가/현재가'이지만, 미국/유럽 증시 및 해외 국채, 원자재는 '직전 현지 거래일 종가'이다.
    - 아직 개장하지 않은 미국 시장의 수치를 '금일 미국 증시'로 표현하는 등 기준시점을 혼동하지 말고, '직전 뉴욕 증시', '전일 미국 장' 등으로 시점을 명확히 구분하여 서술하라.
-8. 포맷 및 구조:
+8. Daily Event (야간 발표 예정 지표) 작성 원칙 (SSOT & 표 100% 일치 필수):
+   - `daily_event_watchpoints` 본문에서 다루는 모든 경제지표는 **반드시 [Context JSON]의 `economic_calendar.today_night` 목록에 실제로 존재하는 지표여야 한다.**
+   - `today_night` 목록에 없는 지표(예: 당일 일정이 아닌 ISM 제조업 PMI, JOLTS 구인건수, 비농업 고용지수 등)를 절대 언급하거나 임의로 지어내지 마라.
+   - 지표를 언급할 때 시장예상치는 컨텍스트의 `forecast` 값만을 정확하게 인용하라 (forecast가 null이거나 없는 지표는 예상치 숫자를 지어내지 마라).
+   - 본문에서 다룬 지표는 바로 아래에 표시되는 '금일 밤 주요 발표 예정 지표' 표와 100% 일치해야 한다.
+9. 포맷 및 구조:
    - FICC Daily Summary: 당일 시장을 관통하는 핵심 불릿 3줄
    - FICC Summary: 전일/당일 글로벌 거시 이벤트 종합 요약 (1문단, 약 300~400자)
    - ISSUE REVIEW:
@@ -45,7 +50,7 @@ class PromptManager:
      • bond (채권): 국채 금리, 스프레드 및 통화정책 (1문단, 약 250자)
      • commodity (원자재): 유가, 금 등 원자재 수급/지정학 (1문단, 약 250자)
    - FICC Forecast: 차기 FOMC/금통위 통화정책 경로 및 거시 시나리오 전망 (1문단, 약 200~250자)
-   - Daily Event Watchpoints: 금일 밤 주요 발표 예정 지표의 관전 포인트 (1문단, 약 150~200자)
+   - Daily Event Watchpoints: 금일 밤(16:30 이후) economic_calendar.today_night에 예정된 지표의 관전 포인트 (1문단, 약 150~200자, 반드시 today_night 지표만 인용)
 """
 
     @classmethod
@@ -56,7 +61,8 @@ class PromptManager:
     def build_user_prompt(cls, context: Dict[str, Any]) -> str:
         context_str = json.dumps(context, ensure_ascii=False, indent=2)
         user_prompt = f"""아래의 [Context JSON] 데이터를 정밀 분석하여 일일 FICC Daily Macro 리포트를 작성하라.
-반드시 제공된 수치만을 정확히 인용해야 하며, 4대 자산(증시/외환/채권/원자재) 이슈 리뷰를 작성하라.
+반드시 제공된 수치만을 정확히 인용해야 하며, 4대 자산(증시/외환/채권/원자재) 이슈 리뷰와 [economic_calendar.today_night]에 명시된 당일 밤 발표 예정 지표 관전 포인트를 작성하라.
+특히 daily_event_watchpoints에서는 economic_calendar.today_night 목록에 실제로 있는 지표만을 다루어야 한다.
 
 [Context JSON]
 {context_str}

@@ -31,9 +31,30 @@ class TestDailyEventValidator(unittest.TestCase):
             "economic_calendar": {
                 "day_review": [
                     {
+                        "event_name": "French Gov Budget Balance",
+                        "event_name_kor": "프랑스 정부 재정수지",
+                        "scheduled_raw": "09-02-2026 6:45am",
+                        "scheduled_at_utc": "2026-09-02 06:45:00 UTC",
+                        "scheduled_at_kst": "2026-09-02 15:45:00 KST",
+                        "scheduled_time_kst": "15:45",
+                        "actual": None,
+                        "forecast": None
+                    },
+                    {
+                        "event_name": "Spanish Unemployment Change",
+                        "event_name_kor": "스페인 실업자수 변동",
+                        "scheduled_raw": "09-02-2026 7:00am",
+                        "scheduled_at_utc": "2026-09-02 07:00:00 UTC",
+                        "scheduled_at_kst": "2026-09-02 16:00:00 KST",
+                        "scheduled_time_kst": "16:00",
+                        "actual": None,
+                        "forecast": "15.4K"
+                    },
+                    {
                         "event_name": "ISM Manufacturing PMI",
                         "event_name_kor": "미국 ISM 제조업 구매관리자지수(PMI)",
-                        "scheduled_at": "2026-09-01 23:00:00",
+                        "scheduled_at_kst": "2026-09-01 23:00:00 KST",
+                        "scheduled_time_kst": "23:00",
                         "actual": "47.2",
                         "forecast": "47.5"
                     }
@@ -44,38 +65,70 @@ class TestDailyEventValidator(unittest.TestCase):
                         "country": "US",
                         "event_name": "ADP Non-Farm Employment Change",
                         "event_name_kor": "미국 ADP 비농업 부문 고용 변화",
-                        "scheduled_time_kst": "01:15",
-                        "scheduled_at": "2026-09-03 01:15:00",
+                        "scheduled_raw": "09-02-2026 12:15pm",
+                        "scheduled_at_utc": "2026-09-02 12:15:00 UTC",
+                        "scheduled_at_kst": "2026-09-02 21:15:00 KST",
+                        "scheduled_time_kst": "21:15",
                         "importance": "MEDIUM",
                         "forecast": "47K"
                     },
                     {
                         "event_id": "EVT_20260902_002",
                         "country": "CA",
+                        "event_name": "BOC Rate Statement",
+                        "event_name_kor": "캐나다 중앙은행(BOC) 통화정책 성명서",
+                        "scheduled_raw": "09-02-2026 1:45pm",
+                        "scheduled_at_utc": "2026-09-02 13:45:00 UTC",
+                        "scheduled_at_kst": "2026-09-02 22:45:00 KST",
+                        "scheduled_time_kst": "22:45",
+                        "importance": "HIGH",
+                        "forecast": None
+                    },
+                    {
+                        "event_id": "EVT_20260902_003",
+                        "country": "CA",
                         "event_name": "Overnight Rate",
                         "event_name_kor": "캐나다 기준금리 결정",
-                        "scheduled_time_kst": "02:45",
-                        "scheduled_at": "2026-09-03 02:45:00",
+                        "scheduled_raw": "09-02-2026 1:45pm",
+                        "scheduled_at_utc": "2026-09-02 13:45:00 UTC",
+                        "scheduled_at_kst": "2026-09-02 22:45:00 KST",
+                        "scheduled_time_kst": "22:45",
                         "importance": "HIGH",
                         "forecast": "2.25%"
                     },
                     {
-                        "event_id": "EVT_20260902_003",
+                        "event_id": "EVT_20260902_004",
                         "country": "US",
                         "event_name": "Factory Orders m/m",
                         "event_name_kor": "미국 공장재 수주 (전월비)",
-                        "scheduled_time_kst": "03:00",
-                        "scheduled_at": "2026-09-03 03:00:00",
+                        "scheduled_raw": "09-02-2026 2:00pm",
+                        "scheduled_at_utc": "2026-09-02 14:00:00 UTC",
+                        "scheduled_at_kst": "2026-09-02 23:00:00 KST",
+                        "scheduled_time_kst": "23:00",
                         "importance": "LOW",
                         "forecast": "0.7%"
                     },
                     {
-                        "event_id": "EVT_20260902_004",
+                        "event_id": "EVT_20260902_005",
+                        "country": "CA",
+                        "event_name": "BOC Press Conference",
+                        "event_name_kor": "캐나다 중앙은행(BOC) 기자회견",
+                        "scheduled_raw": "09-02-2026 2:30pm",
+                        "scheduled_at_utc": "2026-09-02 14:30:00 UTC",
+                        "scheduled_at_kst": "2026-09-02 23:30:00 KST",
+                        "scheduled_time_kst": "23:30",
+                        "importance": "HIGH",
+                        "forecast": None
+                    },
+                    {
+                        "event_id": "EVT_20260902_006",
                         "country": "US",
                         "event_name": "Crude Oil Inventories",
                         "event_name_kor": "미국 EIA 주간 원유재고",
-                        "scheduled_time_kst": "03:30",
-                        "scheduled_at": "2026-09-03 03:30:00",
+                        "scheduled_raw": "09-02-2026 2:30pm",
+                        "scheduled_at_utc": "2026-09-02 14:30:00 UTC",
+                        "scheduled_at_kst": "2026-09-02 23:30:00 KST",
+                        "scheduled_time_kst": "23:30",
                         "importance": "LOW",
                         "forecast": "-0.4M"
                     }
@@ -84,10 +137,11 @@ class TestDailyEventValidator(unittest.TestCase):
         }
 
     def test_scenario_a_normal_upcoming_event_pass(self):
-        """Test A: 정상 upcoming event -> 본문/표 일치 -> PASS"""
+        """Test A: 정상 upcoming event -> 본문/표 일치 -> PASS (21:15, 22:45, 23:00, 23:30)"""
         valid_text = (
-            "금일 야간에는 미국 8월 ADP 비농업 부문 고용 변화(예상치 47K)와 7월 공장재 수주(예상치 0.7%), "
-            "EIA 주간 원유재고(예상치 -0.4M)가 발표될 예정이다. 아울러 캐나다 중앙은행의 기준금리 결정(예상치 2.25%)이 예정되어 있다."
+            "금일 야간에는 21:15 발표되는 미국 ADP 비농업 부문 고용 변화를 통해 노동시장 냉각 여부를 점검할 필요가 있다. "
+            "이어 22:45 예정된 캐나다 중앙은행(BOC)의 기준금리 결정 및 통화정책 성명서 발표와 23:30 기자회견을 통해 통화정책 기조를 확인할 수 있다. "
+            "아울러 23:00 미국 공장재 수주 지표와 23:30 발표되는 EIA 주간 원유재고를 점검하는 것이 핵심 관전 포인트다."
         )
         errors = FactValidator._validate_daily_event_section(valid_text, self.base_context)
         self.assertEqual(len(errors), 0, f"정상 텍스트에서 오류 적발됨: {errors}")
@@ -95,38 +149,38 @@ class TestDailyEventValidator(unittest.TestCase):
     def test_scenario_b_nonexistent_indicator_fail(self):
         """Test B: 본문에 없는 이벤트(JOLTS, ISM PMI 등) 추가 -> FAIL"""
         invalid_text = (
-            "금일 밤에는 미국 ADP 고용 변화(예상치 47K)와 함께 미국 JOLTS 구인건수 및 ISM 서비스업 PMI가 발표될 예정이다."
+            "금일 21:15 미국 ADP 고용 변화와 함께 미국 JOLTS 구인건수 및 ISM 서비스업 PMI가 발표될 예정이다."
         )
         errors = FactValidator._validate_daily_event_section(invalid_text, self.base_context)
         self.assertGreater(len(errors), 0, "미존재 지표 인용이 적발되지 않음")
         self.assertTrue(any("JOLTS" in e or "ISM" in e for e in errors))
 
     def test_scenario_c_incorrect_time_fail(self):
-        """Test C: 본문 이벤트 시각 변경 (예: canonical 01:15 대신 22:30 인용) -> FAIL"""
+        """Test C: 본문 이벤트 시각 변경 (예: canonical 21:15 대신 과거 잘못된 01:15 또는 19:30 인용) -> FAIL"""
         invalid_text = (
-            "금일 22:30에 미국 ADP 비농업 고용 변화(예상치 47K)가 발표될 예정이다."
+            "금일 01:15에 미국 ADP 비농업 고용 변화가 발표될 예정이다."
         )
         errors = FactValidator._validate_daily_event_section(invalid_text, self.base_context)
         self.assertGreater(len(errors), 0, "잘못된 발표 시각 인용이 적발되지 않음")
-        self.assertTrue(any("22:30" in e for e in errors))
+        self.assertTrue(any("01:15" in e for e in errors))
 
     def test_scenario_d_fabricated_forecast_fail(self):
         """Test D: expected 값 임의 변경 / 날조 (예: 예상치 55.2 또는 예상 7.33M) -> FAIL"""
         invalid_text = (
-            "금일 야간 미국 ADP 비농업 부문 고용 변화는 시장 예상치 55.2K를 상회할지 주목된다."
+            "금일 야간 21:15 미국 ADP 비농업 부문 고용 변화는 시장 예상치 55.2K를 상회할지 주목된다."
         )
         errors = FactValidator._validate_daily_event_section(invalid_text, self.base_context)
         self.assertGreater(len(errors), 0, "날조된 예상치(55.2)가 적발되지 않음")
         self.assertTrue(any("55.2" in e for e in errors))
 
     def test_scenario_e_past_event_as_upcoming_fail(self):
-        """Test E: 16:30 이전 이미 발표된 과거 지표(ISM 제조업 PMI)를 upcoming으로 삽입 -> FAIL"""
+        """Test E: 16:30 이전 이미 발표된 과거 지표(프랑스 재정수지 15:45, ISM PMI 등)를 upcoming으로 삽입 -> FAIL"""
         invalid_text = (
-            "금일 밤에는 미국 ISM 제조업 PMI 발표를 앞두고 관망세가 짙어질 것으로 보인다."
+            "금일 밤에는 프랑스 정부 재정수지 및 미국 ISM 제조업 PMI 발표를 앞두고 관망세가 짙어질 것으로 보인다."
         )
         errors = FactValidator._validate_daily_event_section(invalid_text, self.base_context)
-        self.assertGreater(len(errors), 0, "과거 지표(ISM 제조업 PMI) upcoming 인용이 적발되지 않음")
-        self.assertTrue(any("ISM" in e for e in errors))
+        self.assertGreater(len(errors), 0, "과거 지표(프랑스 재정수지 / ISM 제조업 PMI) upcoming 인용이 적발되지 않음")
+        self.assertTrue(any("재정수지" in e or "ISM" in e for e in errors))
 
     def test_scenario_f_empty_events_handling(self):
         """Test F: 실제 이벤트가 없는 경우 -> 빈 목록 정상 통과 및 허위 작성 차단"""

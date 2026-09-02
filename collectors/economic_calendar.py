@@ -23,7 +23,7 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 
 KST_TZ = pytz.timezone('Asia/Seoul')
-EDT_TZ = pytz.timezone('America/New_York')
+UTC_TZ = pytz.utc
 HTTP_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
 }
@@ -175,7 +175,9 @@ class ForexFactoryCalendarAdapter(BaseCalendarAdapter):
             "currency": country_or_curr,
             "country": country_code,
             "scheduled_raw": raw_time,
+            "scheduled_at_utc": sched_kst.astimezone(UTC_TZ).strftime("%Y-%m-%d %H:%M:%S UTC"),
             "scheduled_at_kst": sched_kst.strftime("%Y-%m-%d %H:%M:%S KST"),
+            "scheduled_time_kst": sched_kst.strftime("%H:%M"),
             "scheduled_dt_kst": sched_kst,
             "importance": imp_norm,
             "prior": previous if previous else None,
@@ -186,7 +188,7 @@ class ForexFactoryCalendarAdapter(BaseCalendarAdapter):
 
     @staticmethod
     def _parse_mdy_time_to_kst(date_str: str, time_str: str) -> Optional[datetime.datetime]:
-        """MM-DD-YYYY 포맷 및 뉴욕 EDT/EST 시각을 KST timezone-aware 객체로 변환"""
+        """MM-DD-YYYY 포맷 및 ForexFactory UTC 시각을 KST (Asia/Seoul) timezone-aware 객체로 정확히 변환"""
         try:
             parts = date_str.split("-")
             if len(parts) == 3:
@@ -203,8 +205,8 @@ class ForexFactoryCalendarAdapter(BaseCalendarAdapter):
                 except Exception:
                     hour, minute = 0, 0
 
-            local_dt = EDT_TZ.localize(datetime.datetime(y, m, d, hour, minute))
-            return local_dt.astimezone(KST_TZ)
+            utc_dt = UTC_TZ.localize(datetime.datetime(y, m, d, hour, minute))
+            return utc_dt.astimezone(KST_TZ)
         except Exception:
             return None
 

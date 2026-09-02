@@ -1,0 +1,281 @@
+"""
+[FICC Daily Macro] 설정 및 지표 메타데이터 정의
+"""
+
+import pytz
+
+TARGET_DAILY_TIME_STR = "16:30 KST"
+KST_TZ = pytz.timezone('Asia/Seoul')
+
+# 28개 지표 메타데이터 정의
+EQUITY_INDICATORS = [
+    {
+        "category": "EQUITY",
+        "name": "코스피 (KOSPI)",
+        "symbol": "^KS11",
+        "market_type": "KR_EQUITY",
+        "price_type": "Cash Close (KRX)",
+        "tz": "Asia/Seoul",
+        "unit": "pt",
+    },
+    {
+        "category": "EQUITY",
+        "name": "코스닥 (KOSDAQ)",
+        "symbol": "^KQ11",
+        "market_type": "KR_EQUITY",
+        "price_type": "Cash Close (KRX)",
+        "tz": "Asia/Seoul",
+        "unit": "pt",
+    },
+    {
+        "category": "EQUITY",
+        "name": "VIX 변동성 지수",
+        "symbol": "^VIX",
+        "market_type": "US_EQUITY",
+        "price_type": "Cash Close (CBOE)",
+        "tz": "America/New_York",
+        "unit": "pt",
+    },
+    {
+        "category": "EQUITY",
+        "name": "S&P 500",
+        "symbol": "^GSPC",
+        "market_type": "US_EQUITY",
+        "price_type": "Cash Close (NYSE/NASDAQ)",
+        "tz": "America/New_York",
+        "unit": "pt",
+    },
+    {
+        "category": "EQUITY",
+        "name": "다우존스 30",
+        "symbol": "^DJI",
+        "market_type": "US_EQUITY",
+        "price_type": "Cash Close (NYSE)",
+        "tz": "America/New_York",
+        "unit": "pt",
+    },
+    {
+        "category": "EQUITY",
+        "name": "나스닥 종합 (NASDAQ)",
+        "symbol": "^IXIC",
+        "market_type": "US_EQUITY",
+        "price_type": "Cash Close (NASDAQ)",
+        "tz": "America/New_York",
+        "unit": "pt",
+    },
+    {
+        "category": "EQUITY",
+        "name": "상해종합 (SSE)",
+        "symbol": "000001.SS",
+        "market_type": "CN_EQUITY",
+        "price_type": "Cash Close (SSE)",
+        "tz": "Asia/Shanghai",
+        "unit": "pt",
+    },
+    {
+        "category": "EQUITY",
+        "name": "항셍지수 (HSI)",
+        "symbol": "^HSI",
+        "market_type": "HK_EQUITY",
+        "price_type": "Cash Close/Intraday (HKEX)",
+        "tz": "Asia/Hong_Kong",
+        "unit": "pt",
+    },
+    {
+        "category": "EQUITY",
+        "name": "니케이 225 (Nikkei)",
+        "symbol": "^N225",
+        "market_type": "JP_EQUITY",
+        "price_type": "Cash Close (TSE)",
+        "tz": "Asia/Tokyo",
+        "unit": "pt",
+    },
+    {
+        "category": "EQUITY",
+        "name": "EURO STOXX 50",
+        "symbol": "^STOXX50E",
+        "market_type": "EU_EQUITY",
+        "price_type": "Cash Close (Eurex)",
+        "tz": "Europe/Berlin",
+        "unit": "pt",
+    }
+]
+
+FX_INDICATORS = [
+    {
+        "category": "FX",
+        "name": "달러 인덱스 (DXY)",
+        "symbol": "DX-Y.NYB",
+        "market_type": "FX_SPOT",
+        "price_type": "Spot/Futures Snapshot (ICE)",
+        "tz": "America/New_York",
+        "unit": "pt",
+    },
+    {
+        "category": "FX",
+        "name": "원/달러 환율 (USD/KRW)",
+        "symbol": "KRW=X",
+        "market_type": "FX_SPOT",
+        "price_type": "FX Spot Snapshot",
+        "tz": "Asia/Seoul",
+        "unit": "원",
+    },
+    {
+        "category": "FX",
+        "name": "엔/달러 환율 (USD/JPY)",
+        "symbol": "JPY=X",
+        "market_type": "FX_SPOT",
+        "price_type": "FX Spot Snapshot",
+        "tz": "Asia/Tokyo",
+        "unit": "엔",
+    },
+    {
+        "category": "FX",
+        "name": "역외 위안/달러 (USD/CNH)",
+        "symbol": "CNH=F",
+        "market_type": "FX_SPOT",
+        "price_type": "FX Futures/Spot Snapshot",
+        "tz": "Asia/Hong_Kong",
+        "unit": "위안",
+    },
+    {
+        "category": "FX",
+        "name": "유로/달러 환율 (EUR/USD)",
+        "symbol": "EURUSD=X",
+        "market_type": "FX_SPOT",
+        "price_type": "FX Spot Snapshot",
+        "tz": "Europe/Berlin",
+        "unit": "$",
+    },
+    {
+        "category": "FX",
+        "name": "파운드/달러 환율 (GBP/USD)",
+        "symbol": "GBPUSD=X",
+        "market_type": "FX_SPOT",
+        "price_type": "FX Spot Snapshot",
+        "tz": "Europe/London",
+        "unit": "$",
+    }
+]
+
+BOND_INDICATORS = [
+    {
+        "category": "BOND",
+        "name": "한국 국고채 3년",
+        "source": "KOFIA",
+        "code": "KTB 3y",
+        "market_type": "KR_BOND",
+        "price_type": "최종호가수익률 (KOFIA/민평)",
+        "tz": "Asia/Seoul",
+        "unit": "%",
+    },
+    {
+        "category": "BOND",
+        "name": "한국 국고채 10년",
+        "source": "KOFIA",
+        "code": "KTB10y",
+        "market_type": "KR_BOND",
+        "price_type": "최종호가수익률 (KOFIA/민평)",
+        "tz": "Asia/Seoul",
+        "unit": "%",
+    },
+    {
+        "category": "BOND",
+        "name": "미국 국채 2년",
+        "source": "CNBC",
+        "symbol": "US2Y",
+        "market_type": "US_BOND",
+        "price_type": "Benchmark Cash Yield",
+        "tz": "America/New_York",
+        "unit": "%",
+    },
+    {
+        "category": "BOND",
+        "name": "미국 국채 10년",
+        "source": "CNBC",
+        "symbol": "US10Y",
+        "market_type": "US_BOND",
+        "price_type": "Benchmark Cash Yield",
+        "tz": "America/New_York",
+        "unit": "%",
+    },
+    {
+        "category": "BOND",
+        "name": "일본 국채 10년",
+        "source": "CNBC",
+        "symbol": "JP10Y-JP",
+        "market_type": "JP_BOND",
+        "price_type": "Benchmark Cash Yield",
+        "tz": "Asia/Tokyo",
+        "unit": "%",
+    },
+    {
+        "category": "BOND",
+        "name": "독일 국채 10년",
+        "source": "CNBC",
+        "symbol": "DE10Y-DE",
+        "market_type": "DE_BOND",
+        "price_type": "Benchmark Cash Yield",
+        "tz": "Europe/Berlin",
+        "unit": "%",
+    }
+]
+
+COMMODITY_INDICATORS = [
+    {
+        "category": "COMMODITY",
+        "name": "WTI 원유",
+        "symbol": "CL=F",
+        "market_type": "COMM_FUTURES",
+        "price_type": "Front Futures Snapshot (NYMEX)",
+        "tz": "America/New_York",
+        "unit": "$/bbl",
+    },
+    {
+        "category": "COMMODITY",
+        "name": "Brent 원유",
+        "symbol": "BZ=F",
+        "market_type": "COMM_FUTURES",
+        "price_type": "Front Futures Snapshot (ICE)",
+        "tz": "Europe/London",
+        "unit": "$/bbl",
+    },
+    {
+        "category": "COMMODITY",
+        "name": "금 (Gold)",
+        "symbol": "GC=F",
+        "market_type": "COMM_FUTURES",
+        "price_type": "Front Futures Snapshot (COMEX)",
+        "tz": "America/New_York",
+        "unit": "$/oz",
+    },
+    {
+        "category": "COMMODITY",
+        "name": "은 (Silver)",
+        "symbol": "SI=F",
+        "market_type": "COMM_FUTURES",
+        "price_type": "Front Futures Snapshot (COMEX)",
+        "tz": "America/New_York",
+        "unit": "$/oz",
+    },
+    {
+        "category": "COMMODITY",
+        "name": "구리 (Copper)",
+        "symbol": "HG=F",
+        "market_type": "COMM_FUTURES",
+        "price_type": "Front Futures Snapshot (COMEX)",
+        "tz": "America/New_York",
+        "unit": "$/lb",
+    },
+    {
+        "category": "COMMODITY",
+        "name": "천연가스 (Natural Gas)",
+        "symbol": "NG=F",
+        "market_type": "COMM_FUTURES",
+        "price_type": "Front Futures Snapshot (NYMEX)",
+        "tz": "America/New_York",
+        "unit": "$/MMBtu",
+    }
+]
+
+ALL_INDICATORS = EQUITY_INDICATORS + FX_INDICATORS + BOND_INDICATORS + COMMODITY_INDICATORS

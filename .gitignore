@@ -1,0 +1,42 @@
+# ==========================================
+# FICC Daily Macro .gitignore
+# ==========================================
+
+# 1. Python 캐시 및 바이트코드
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# 2. 가상환경 (Virtual Environments)
+venv/
+.venv/
+env/
+ENV/
+
+# 3. 환경 변수 및 보안/API 키 파일
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.log
+
+# 4. 로컬 IDE 및 OS 시스템 파일
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 5. 수집된 일자별 데이터 파일 전체 제외 (디렉토리 구조는 .gitkeep으로 보존)
+data/**/*.json
+data/*.json
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# 6. 임시 및 백업 파일
+*.bak
+*.swp
+*.tmp

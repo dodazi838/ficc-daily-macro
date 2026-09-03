@@ -253,7 +253,7 @@ class NaverBlogFormatter:
 
         # [원자재 표]
         lines.append("4. 원자재")
-        lines.append(f"{'품목명':<16} | {'가격':>12} | {'등락률':>10}")
+        lines.append(f"{'종목명':<16} | {'가격':>12} | {'등락률':>10}")
         lines.append("-" * 46)
         for it in categories.get("COMMODITY", []):
             d_name = cls.clean_display_name(it['name'])
@@ -419,7 +419,7 @@ class NaverBlogFormatter:
         # [4] 원자재 표 (15px)
         html.append(cls._render_table_html(
             title="4. 원자재",
-            headers=["품목명", "가격", "등락률"],
+            headers=["종목명", "가격", "등락률"],
             rows=[
                 [
                     cls.clean_display_name(it['name']),

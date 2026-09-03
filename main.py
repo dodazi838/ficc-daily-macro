@@ -102,7 +102,7 @@ def print_market_tables(market_data: dict):
         chg_str = format_change(r['change'], is_pct=False)
         pct_str = format_change(r['pct_change'], is_pct=True)
         comm_rows.append([r['name'], r['symbol'], c_str, chg_str, pct_str, r['price_type'], r['actual_as_of_kst']])
-    print(tabulate(comm_rows, headers=["품목명", "심볼", "가격", "전일대비", "등락률(%)", "가격기준", "수집기준시각(KST)"], tablefmt="rounded_grid"))
+    print(tabulate(comm_rows, headers=["종목명", "심볼", "가격", "전일대비", "등락률(%)", "가격기준", "수집기준시각(KST)"], tablefmt="rounded_grid"))
 
     # 5. 핵심 스프레드
     print(f"\n{COLOR_BOLD}5. FICC 핵심 장단기 & 국가간 금리 스프레드 (Calculated Spreads){COLOR_RESET}")

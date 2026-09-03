@@ -307,32 +307,53 @@ class FactValidator:
                 num_round0 = round(num, 0)
 
                 if mentioned_keys:
+                    is_level_match = any(
+                        (num >= 10 and int(num) == int(a)) or 
+                        (num >= 50 and int(num) == int(a // 10 * 10)) or
+                        (num >= 500 and int(num) == int(a // 100 * 100))
+                        for a in allowed_for_sentence
+                    )
                     is_matched = (
                         (num_round3 in allowed_for_sentence) or 
                         (num_round2 in allowed_for_sentence) or 
                         (num_round1 in allowed_for_sentence) or 
                         (num_round0 in allowed_for_sentence) or 
-                        any(abs(num - a) <= 0.05 for a in allowed_for_sentence)
+                        any(abs(num - a) <= 0.05 for a in allowed_for_sentence) or
+                        is_level_match
                     )
                     if is_matched:
                         verified_count += 1
                     else:
+                        in_context_level = any(
+                            (num >= 10 and int(num) == int(a)) or 
+                            (num >= 50 and int(num) == int(a // 10 * 10)) or
+                            (num >= 500 and int(num) == int(a // 100 * 100))
+                            for a in all_valid_numbers
+                        )
                         in_context = (
                             (num_round3 in all_valid_numbers) or 
                             (num_round2 in all_valid_numbers) or 
                             (num_round1 in all_valid_numbers) or 
-                            any(abs(num - a) <= 0.05 for a in all_valid_numbers)
+                            any(abs(num - a) <= 0.05 for a in all_valid_numbers) or
+                            in_context_level
                         )
                         if in_context:
                             verified_count += 1
                         else:
                             errors.append(f"[{sec_name}] 허위/과거 수치 적발: '{sent_clean}' 내 수치 {num}는 당일 검증된 시장 데이터셋에 존재하지 않습니다.")
                 else:
+                    is_valid_level = any(
+                        (num >= 10 and int(num) == int(a)) or 
+                        (num >= 50 and int(num) == int(a // 10 * 10)) or
+                        (num >= 500 and int(num) == int(a // 100 * 100))
+                        for a in all_valid_numbers
+                    )
                     is_valid = (
                         (num_round3 in all_valid_numbers) or 
                         (num_round2 in all_valid_numbers) or 
                         (num_round1 in all_valid_numbers) or 
-                        any(abs(num - a) <= 0.05 for a in all_valid_numbers)
+                        any(abs(num - a) <= 0.05 for a in all_valid_numbers) or
+                        is_valid_level
                     )
                     if is_valid:
                         verified_count += 1

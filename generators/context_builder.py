@@ -119,7 +119,8 @@ class AIContextBuilder:
                     "importance": ev.get("importance"),
                     "actual": ev.get("actual"),
                     "forecast": ev.get("forecast"),
-                    "previous": ev.get("previous"),
+                    "prior": ev.get("prior") or ev.get("previous"),
+                    "previous": ev.get("prior") or ev.get("previous"),
                     "impact_category": ev.get("impact_category")
                 }
                 for ev in economic_events.get("day_review_events", [])
@@ -134,7 +135,8 @@ class AIContextBuilder:
                     "scheduled_time_kst": ev.get("scheduled_time_kst", "") or (ev.get("scheduled_at_kst", "")[11:16] if len(ev.get("scheduled_at_kst", "")) >= 16 else ""),
                     "importance": ev.get("importance"),
                     "forecast": ev.get("forecast"),
-                    "previous": ev.get("previous"),
+                    "prior": ev.get("prior") or ev.get("previous"),
+                    "previous": ev.get("prior") or ev.get("previous"),
                     "impact_category": ev.get("impact_category")
                 }
                 for ev in economic_events.get("today_night_events", [])

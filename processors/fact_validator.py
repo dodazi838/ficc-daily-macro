@@ -470,21 +470,25 @@ class FactValidator:
                 if any(kw in day_combined for kw in keywords) and not any(kw in combined_corpus for kw in keywords):
                     errors.append(
                         f"[daily_event_watchpoints] 이미 발표된 과거 지표 인용 오류: "
-                        f"'{ind_name}'은 16:30 이전에 이미 발표된 지표로, 야간 발표 예정 지표(upcoming)로 작성할 수 없습니다."
+                        f"'{ind_name}'은 기준시각 이전에 이미 발표된 지표로, 발표 예정 지표(upcoming)로 작성할 수 없습니다."
                     )
 
         # 3. 본문에 언급된 시각(HH:MM 또는 X시 Y분) 정합성 검사
+        as_of_val = raw_context.get("as_of", "")
+        run_time_val = raw_context.get("run_time_kst", "")
+        as_of_hhmm = run_time_val[11:16] if len(run_time_val) >= 16 else ""
+
         time_matches = re.findall(r'(?<!\d)([0-2]?\d:[0-5]\d)(?!\d)', text)
         for tm in time_matches:
-            # 16:30은 기준시각으로 언급될 수 있으므로 예외
-            if tm in ["16:30", "16:30:00"]:
+            # 보고서 기준시각(예: 16:30, 23:22 등)은 본문에서 언급될 수 있으므로 예외
+            if tm in ["16:30", "16:30:00", as_of_hhmm] or (as_of_val and tm in as_of_val):
                 continue
             # "01:15" vs "1:15" 정규화
             tm_norm = tm if len(tm) == 5 else f"0{tm}"
             if tm not in canonical_times and tm_norm not in canonical_times:
                 errors.append(
                     f"[daily_event_watchpoints] canonical 일정과 불일치하는 발표 시각 인용: "
-                    f"'{tm}'은 당일 16:30 이후 발표 예정 목록의 공식 발표시각과 불일치합니다."
+                    f"'{tm}'은 당일 발표 예정 목록의 공식 발표시각과 불일치합니다."
                 )
 
         # 4. 시장 예상치(forecast) 날조 및 불일치 검증

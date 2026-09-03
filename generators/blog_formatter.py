@@ -178,8 +178,22 @@ class NaverBlogFormatter:
         return " · ".join(items)
 
     @classmethod
-    def get_session_title(cls, is_post_1630: bool) -> str:
-        return "16:30 기준" if is_post_1630 else "장중 실시간 집계 (16:30 이전)"
+    def get_session_title(cls, run_time_kst: Any = None) -> str:
+        if run_time_kst:
+            if hasattr(run_time_kst, "strftime"):
+                return f"{run_time_kst.strftime('%H:%M')} 기준"
+            elif isinstance(run_time_kst, str):
+                clean_str = run_time_kst.replace(" KST", "").strip()
+                try:
+                    parts = clean_str.split(" ")
+                    if len(parts) >= 2 and ":" in parts[1]:
+                        return f"{parts[1][:5]} 기준"
+                except Exception:
+                    pass
+                if "기준" in run_time_kst:
+                    return run_time_kst
+                return f"{run_time_kst} 기준"
+        return "실시간 기준"
 
     @classmethod
     def _validate_input_report(cls, report_data: Dict[str, Any]):
@@ -200,7 +214,10 @@ class NaverBlogFormatter:
         spreads = processed_market_data.get("market_data", {}).get("spreads", [])
         economic_events = processed_market_data.get("economic_events", {})
 
-        session_str = cls.get_session_title(is_post_1630)
+        run_time_val = report_data.get("run_time_kst") or processed_market_data.get("run_time_kst") or ""
+        session_str = cls.get_session_title(run_time_val)
+        as_of_time = session_str.replace(" 기준", "").strip()
+
         lines = []
 
         # 헤더
@@ -309,7 +326,7 @@ class NaverBlogFormatter:
 
         today_night = economic_events.get("today_night_events", [])
         if today_night:
-            lines.append("금일 밤(16:30 이후) 주요 발표 예정 지표")
+            lines.append(f"주요 발표 예정 지표 ({as_of_time} 이후)")
             lines.append(f"{'국가':<6} | {'예정시각':<16} | {'중요도':<6} | {'지표명 (한글)':<32} | {'예상치':>8}")
             lines.append("-" * 75)
             for ev in today_night:
@@ -320,7 +337,7 @@ class NaverBlogFormatter:
                 lines.append(f"{ev.get('country', ''):<6} | {time_short:<16} | {imp_star:<6} | {kor_event_name[:30]:<32} | {f_val:>8}")
             lines.append("")
         else:
-            lines.append("※ 금일 16:30 이후 주요 발표 예정 지표 없음")
+            lines.append(f"※ 금일 {as_of_time} 이후 주요 발표 예정 지표 없음")
             lines.append("")
 
         lines.append("=" * 65)
@@ -337,7 +354,9 @@ class NaverBlogFormatter:
         spreads = processed_market_data.get("market_data", {}).get("spreads", [])
         economic_events = processed_market_data.get("economic_events", {})
 
-        session_str = cls.get_session_title(is_post_1630)
+        run_time_val = report_data.get("run_time_kst") or processed_market_data.get("run_time_kst") or ""
+        session_str = cls.get_session_title(run_time_val)
+        as_of_time = session_str.replace(" 기준", "").strip()
 
         FONT_FAMILY = "'NanumGothic', '나눔고딕', 'Malgun Gothic', '맑은 고딕', sans-serif"
 
@@ -499,7 +518,7 @@ class NaverBlogFormatter:
 
             # 네이버 스마트에디터 복사·붙여넣기 시에도 열 너비가 균등 배분되지 않도록 전용 폭/정렬 지정
             html.append(cls._render_table_html(
-                title="금일 밤(16:30 이후) 주요 발표 예정 지표",
+                title=f"주요 발표 예정 지표 ({as_of_time} 이후)",
                 headers=["국가", "예정시각", "중요도", "지표명", "시장예상치"],
                 rows=event_rows,
                 font_family=FONT_FAMILY,
@@ -507,7 +526,7 @@ class NaverBlogFormatter:
                 col_aligns=["center", "center", "center", "left", "right"]
             ))
         else:
-            html.append(f'<p style="font-family: {FONT_FAMILY}; font-size: 14px; font-weight: normal; color: #6c757d; margin: 10px 0 20px 0;"><span style="font-size: 14px; color: #6c757d;">※ 금일 16:30 이후 주요 발표 예정 지표 없음</span></p>')
+            html.append(f'<p style="font-family: {FONT_FAMILY}; font-size: 14px; font-weight: normal; color: #6c757d; margin: 10px 0 20px 0;"><span style="font-size: 14px; color: #6c757d;">※ 금일 {as_of_time} 이후 주요 발표 예정 지표 없음</span></p>')
 
         html.append('</div>')
         return "\n".join(html)

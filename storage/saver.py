@@ -70,16 +70,18 @@ class DataSaver:
         # 기존 파일이 있다면 이력 백업
         self._archive_if_exists(file_path, date_dir, "market")
 
+        as_of_str = f"{run_time_kst.strftime('%H:%M')} 기준"
+        run_time_str = run_time_kst.strftime("%Y-%m-%d %H:%M:%S KST")
+
         payload = {
             "report_date": date_str,
-            "cutoff_kst": cutoff_kst.strftime("%Y-%m-%d %H:%M:%S KST"),
-            "run_time_kst": run_time_kst.strftime("%Y-%m-%d %H:%M:%S KST"),
+            "run_time_kst": run_time_str,
+            "as_of": as_of_str,
             "data_type": "MARKET_INDICATORS",
             "source": "Yahoo Finance (4-tier Fallback Engine)",
-            "execution_mode": "DAILY_CONFIRMED" if is_post_1630 else "PRE_1630_TEST",
+            "execution_mode": "LIVE_SNAPSHOT",
             "collected_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S KST"),
-            "as_of": "16:30 KST (정규 마감)" if is_post_1630 else f"{run_time_kst.strftime('%H:%M')} KST (장중)",
-            "basis": "국내/아시아 당일 종가, 해외 직전 현지 거래일 종가",
+            "basis": "국내/아시아 당일 시세, 해외 직전 현지 거래일 종가",
             "total_count": len(raw_records),
             "records": raw_records
         }
@@ -103,20 +105,19 @@ class DataSaver:
         os.makedirs(date_dir, exist_ok=True)
         file_path = os.path.join(date_dir, "news.json")
 
-        if cutoff_kst is None:
-            cutoff_kst = run_time_kst.replace(hour=16, minute=30, second=0, microsecond=0)
-
         self._archive_if_exists(file_path, date_dir, "news")
+
+        as_of_str = f"{run_time_kst.strftime('%H:%M')} 기준"
+        run_time_str = run_time_kst.strftime("%Y-%m-%d %H:%M:%S KST")
 
         payload = {
             "report_date": date_str,
-            "cutoff_kst": cutoff_kst.strftime("%Y-%m-%d %H:%M:%S KST"),
-            "run_time_kst": run_time_kst.strftime("%Y-%m-%d %H:%M:%S KST"),
+            "run_time_kst": run_time_str,
+            "as_of": as_of_str,
             "data_type": "RAW_MACRO_NEWS",
             "source": "Official RSS Feeds (Yonhap, Reuters, CNBC, WSJ, Bloomberg)",
-            "execution_mode": "DAILY_CONFIRMED" if is_post_1630 else "PRE_1630_TEST",
+            "execution_mode": "LIVE_SNAPSHOT",
             "collected_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S KST"),
-            "as_of": "16:30 KST",
             **news_collector_report
         }
 
@@ -139,20 +140,19 @@ class DataSaver:
         os.makedirs(date_dir, exist_ok=True)
         file_path = os.path.join(date_dir, "events.json")
 
-        if cutoff_kst is None:
-            cutoff_kst = run_time_kst.replace(hour=16, minute=30, second=0, microsecond=0)
-
         self._archive_if_exists(file_path, date_dir, "events")
+
+        as_of_str = f"{run_time_kst.strftime('%H:%M')} 기준"
+        run_time_str = run_time_kst.strftime("%Y-%m-%d %H:%M:%S KST")
 
         payload = {
             "report_date": date_str,
-            "cutoff_kst": cutoff_kst.strftime("%Y-%m-%d %H:%M:%S KST"),
-            "run_time_kst": run_time_kst.strftime("%Y-%m-%d %H:%M:%S KST"),
+            "run_time_kst": run_time_str,
+            "as_of": as_of_str,
             "data_type": "RAW_ECONOMIC_EVENTS",
             "source": "ForexFactory Calendar Feed",
-            "execution_mode": "DAILY_CONFIRMED" if is_post_1630 else "PRE_1630_TEST",
+            "execution_mode": "LIVE_SNAPSHOT",
             "collected_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S KST"),
-            "as_of": "16:30 KST",
             **calendar_collector_report
         }
 
@@ -161,7 +161,7 @@ class DataSaver:
 
         return file_path
 
-    def save_raw_calendar(self, calendar_collector_report: Dict[str, Any], run_time_kst: datetime, is_post_1630: bool) -> str:
+    def save_raw_calendar(self, calendar_collector_report: Dict[str, Any], run_time_kst: datetime, is_post_1630: bool = True) -> str:
         """save_raw_events의 하위 호환 별칭"""
         return self.save_raw_events(calendar_collector_report, run_time_kst, is_post_1630=is_post_1630)
 
@@ -173,37 +173,26 @@ class DataSaver:
                        cutoff_kst: Optional[datetime] = None,
                        is_post_1630: bool = True, 
                        raw_snapshots: Optional[Dict[str, str]] = None,
-                       force_overwrite: bool = False) -> str:
+                       force_overwrite: bool = True) -> str:
         """
-        가공 완료된 28개 지표 + 뉴스 클러스터 + 3-Way 경제 캘린더 통합 JSON 저장
+        가공 완료된 28개 지표 + 뉴스 클러스터 + 경제 캘린더 통합 JSON 저장
         AI/블로그 생성 파이프라인의 Single Source of Truth (SSOT)로 활용
         저장 경로: data/processed/YYYY-MM-DD.json
         """
         date_str = run_time_kst.strftime("%Y-%m-%d")
         file_path = os.path.join(self.processed_dir, f"{date_str}.json")
 
-        if cutoff_kst is None:
-            cutoff_kst = run_time_kst.replace(hour=16, minute=30, second=0, microsecond=0)
-
-        cutoff_str = cutoff_kst.strftime("%Y-%m-%d %H:%M:%S KST")
+        as_of_str = f"{run_time_kst.strftime('%H:%M')} 기준"
         run_time_str = run_time_kst.strftime("%Y-%m-%d %H:%M:%S KST")
 
-        # 기존 파일이 이미 16:30 공식 확정본으로 존재하는지 확인
-        existing_is_official = False
-        if os.path.exists(file_path):
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    existing_data = json.load(f)
-                    if existing_data.get("execution_mode") == "DAILY_CONFIRMED":
-                        existing_is_official = True
-            except Exception:
-                pass
+        # 기존 파일이 존재하면 history에 타임스탬프 백업
+        self._archive_if_exists(file_path, self.processed_dir, "processed")
 
         payload = {
             "report_date": date_str,
-            "cutoff_kst": cutoff_str,
             "run_time_kst": run_time_str,
-            "execution_mode": "DAILY_CONFIRMED" if is_post_1630 else "PRE_1630_TEST",
+            "as_of": as_of_str,
+            "execution_mode": "LIVE_SNAPSHOT",
             "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S KST"),
             "source_raw_snapshots": {k: os.path.relpath(v, self.base_data_dir) if os.path.isabs(v) else v for k, v in (raw_snapshots or {}).items()},
             "market_data": {
@@ -225,23 +214,7 @@ class DataSaver:
             }
         }
 
-        # [SSOT 보호 정책]
-        # 이미 16:30 공식 확정본이 존재하고 force_overwrite가 False인 상태에서 16:30 이후(예: 19:00) 재실행 시,
-        # 공식 SSOT(YYYY-MM-DD.json)를 덮어쓰지 않고 보호하며, 재실행 데이터는 history/에 보존합니다.
-        if existing_is_official and not force_overwrite and run_time_kst > cutoff_kst:
-            history_dir = os.path.join(self.processed_dir, "history")
-            os.makedirs(history_dir, exist_ok=True)
-            rerun_time_tag = run_time_kst.strftime("%H%M%S")
-            rerun_file_path = os.path.join(history_dir, f"processed_{date_str}_{rerun_time_tag}.json")
-            with open(rerun_file_path, "w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, indent=2, default=json_serial_fallback)
-            
-            print(f"\n🔒 [SSOT 보호] {date_str}의 16:30 공식 확정 데이터가 이미 존재합니다.")
-            print(f"   • 공식 SSOT ({file_path})의 16:30 기준 데이터를 유지합니다.")
-            print(f"   • {run_time_str} 재실행 수집본은 이력 보존용으로 저장되었습니다: {rerun_file_path}")
-            return file_path
-        else:
-            self._archive_if_exists(file_path, self.processed_dir, "processed")
-            with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, indent=2, default=json_serial_fallback)
-            return file_path
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2, default=json_serial_fallback)
+
+        return file_path

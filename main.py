@@ -12,6 +12,7 @@ import os
 import sys
 import argparse
 import datetime
+import pytz
 from tabulate import tabulate
 from dotenv import load_dotenv
 
@@ -45,19 +46,14 @@ COLOR_YELLOW = "\033[93m"
 COLOR_BOLD = "\033[1m"
 COLOR_RESET = "\033[0m"
 
-def print_header(now_kst: datetime.datetime, cutoff_kst: datetime.datetime, is_post_1630: bool):
+def print_header(now_kst: datetime.datetime):
     report_date = now_kst.strftime("%Y-%m-%d")
+    as_of_str = f"{now_kst.strftime('%H:%M')} 기준"
     print("=" * 115)
     print(f"{COLOR_BOLD}{COLOR_CYAN} [FICC Daily Macro] 통합 파이프라인 (Single Source of Truth & FactValidator Gatekeeper){COLOR_RESET}")
     print(f" • 보고서 기준일자 (report_date)   : {COLOR_BOLD}{report_date}{COLOR_RESET}")
-    print(f" • 공식 데이터 기준시각 (cutoff_kst) : {COLOR_BOLD}{COLOR_GREEN}{cutoff_kst.strftime('%Y-%m-%d %H:%M:%S')} KST (16:30 고정 기준){COLOR_RESET}")
-    print(f" • 실제 프로그램 실행시각 (run_time): {COLOR_BOLD}{now_kst.strftime('%Y-%m-%d %H:%M:%S')} KST{COLOR_RESET}")
-
-    if is_post_1630:
-        print(f" • 실행 모드 : {COLOR_GREEN}{COLOR_BOLD}[16:30 KST 정규 마감 확정치 (CONFIRMED)]{COLOR_RESET}")
-    else:
-        print(f" • 실행 모드 : {COLOR_YELLOW}{COLOR_BOLD}⚠️ [장중 실시간 집계 (16:30 이전 테스트)]{COLOR_RESET}")
-        print(f"   {COLOR_YELLOW}※ 주의: 현재 시각({now_kst.strftime('%H:%M')} KST)은 정규 마감 기준시각(16:30 KST) 이전입니다.")
+    print(f" • 보고서 기준시각 (as_of)         : {COLOR_BOLD}{COLOR_GREEN}{now_kst.strftime('%Y-%m-%d %H:%M:%S')} KST ({as_of_str}){COLOR_RESET}")
+    print(f" • 실행 모드                       : {COLOR_GREEN}{COLOR_BOLD}[실행 시점 최신 데이터 스냅샷]{COLOR_RESET}")
     print("=" * 115)
 
 def print_market_tables(market_data: dict):
@@ -114,17 +110,17 @@ def print_market_tables(market_data: dict):
     print(tabulate(sp_rows, headers=["스프레드 명칭", "구분", "현재 스프레드", "전일대비(bp)", "매크로 해석"], tablefmt="rounded_grid"))
 
 def run_pipeline(save_data: bool = True):
-    now_kst = datetime.datetime.now()
-    cutoff_time = now_kst.replace(hour=16, minute=30, second=0, microsecond=0)
-    is_post_1630 = now_kst >= cutoff_time
+    KST_TZ = pytz.timezone('Asia/Seoul')
+    now_kst = datetime.datetime.now(KST_TZ)
+    as_of_str = f"{now_kst.strftime('%H:%M')} 기준"
 
-    print_header(now_kst, cutoff_time, is_post_1630)
+    print_header(now_kst)
 
     # 1. 시장 데이터 수집 (28개)
     collectors = [EquityCollector(), FxCollector(), BondCollector(), CommodityCollector()]
     all_raw_market_records = []
     for c in collectors:
-        records = c.collect(now_kst, is_post_1630)
+        records = c.collect(now_kst, is_post_1630=True)
         all_raw_market_records.extend(records)
 
     processed_market = MacroCalculator.process_all(all_raw_market_records)
@@ -135,18 +131,18 @@ def run_pipeline(save_data: bool = True):
     raw_news_report = news_collector.collect_all(now_kst, lookback_hours=36)
     processed_news = MacroNewsProcessor.process_news(raw_news_report.get("raw_articles", []), now_kst)
 
-    # 3. 경제 캘린더 수집
+    # 3. 경제 캘린더 수집 및 실행시각(now_kst) 기준 큐레이션
     calendar_collector = EconomicCalendarCollector()
     raw_cal_report = calendar_collector.collect_all(now_kst)
     processed_events = MacroEventProcessor.process_calendar_events(raw_cal_report.get("raw_events", []), now_kst)
 
-    # 4. Single Source of Truth 저장 및 16:30 공식 SSOT 보호
+    # 4. Single Source of Truth 저장
     proc_path = None
     if save_data:
         saver = DataSaver(base_data_dir="data")
-        raw_market_path = saver.save_raw_market(all_raw_market_records, now_kst, cutoff_time, is_post_1630)
-        raw_news_path = saver.save_raw_news(raw_news_report, now_kst, cutoff_time, is_post_1630)
-        raw_events_path = saver.save_raw_events(raw_cal_report, now_kst, cutoff_time, is_post_1630)
+        raw_market_path = saver.save_raw_market(all_raw_market_records, now_kst)
+        raw_news_path = saver.save_raw_news(raw_news_report, now_kst)
+        raw_events_path = saver.save_raw_events(raw_cal_report, now_kst)
 
         raw_snapshots = {
             "market": raw_market_path,
@@ -159,16 +155,13 @@ def run_pipeline(save_data: bool = True):
             processed_news=processed_news,
             processed_events=processed_events,
             run_time_kst=now_kst,
-            cutoff_kst=cutoff_time,
-            is_post_1630=is_post_1630,
             raw_snapshots=raw_snapshots
         )
 
         date_str = now_kst.strftime("%Y-%m-%d")
         print("\n" + "=" * 115)
         print(f"{COLOR_GREEN}{COLOR_BOLD}💾 [1~3단계 원천 및 가공 데이터 영구 저장 완료 (SSOT)]{COLOR_RESET}")
-        print(f" • 보고서 기준 시각 (Cutoff) : {COLOR_BOLD}{cutoff_time.strftime('%Y-%m-%d %H:%M:%S')} KST (16:30 고정){COLOR_RESET}")
-        print(f" • 실제 실행 시각 (Run Time): {COLOR_CYAN}{now_kst.strftime('%Y-%m-%d %H:%M:%S')} KST{COLOR_RESET}")
+        print(f" • 보고서 기준 시각 (as_of)  : {COLOR_BOLD}{now_kst.strftime('%Y-%m-%d %H:%M:%S')} KST ({as_of_str}){COLOR_RESET}")
         print(f" • 원천 데이터 (Raw)         : {COLOR_CYAN}data/raw/{date_str}/ (market.json, news.json, events.json){COLOR_RESET}")
         print(f" • 공식 통합본 (SSOT)        : {COLOR_GREEN}{COLOR_BOLD}{proc_path}{COLOR_RESET}")
         print("=" * 115)
@@ -179,7 +172,7 @@ def run_pipeline(save_data: bool = True):
         print(f"\n{COLOR_BOLD}{COLOR_CYAN}🤖 [4~5단계] Gemini 3.7 Flash AI 시황 생성 & FactValidator 게이트키핑 시작...{COLOR_RESET}")
         try:
             report_gen = FiccReportGenerator()
-            res = report_gen.generate_report_from_file(proc_path, is_post_1630=is_post_1630)
+            res = report_gen.generate_report_from_file(proc_path)
             
             usage = res.get("usage", {})
             val = res.get("validation_summary", {})

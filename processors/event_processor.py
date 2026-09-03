@@ -94,10 +94,10 @@ class MacroEventProcessor:
             }
 
         run_kst = ensure_kst_aware(run_time_kst)
-        today_1630 = run_kst.replace(hour=16, minute=30, second=0, microsecond=0)
-        yesterday_1630 = today_1630 - datetime.timedelta(days=1)
-        tomorrow_0600 = today_1630.replace(hour=6, minute=0, second=0) + datetime.timedelta(days=1)
-        next_week = today_1630 + datetime.timedelta(days=7)
+        today_start = run_kst.replace(hour=0, minute=0, second=0, microsecond=0)
+        yesterday_start = today_start - datetime.timedelta(days=1)
+        tomorrow_0600 = today_start.replace(hour=6, minute=0, second=0) + datetime.timedelta(days=1)
+        next_week = run_kst + datetime.timedelta(days=7)
 
         day_review_list = []
         raw_today_night_list = []
@@ -148,11 +148,11 @@ class MacroEventProcessor:
                 related_assets.extend(["Gold", "US10Y"])
             related_assets = list(dict.fromkeys(related_assets))
 
-            # 3. 16:30 KST 기준 3-Way 타임 윈도우 분류
+            # 3. 프로그램 실행 시각(run_kst) 기준 3-Way 타임 윈도우 분류
             time_window = "OTHER"
-            if yesterday_1630 <= sched_dt <= today_1630:
+            if yesterday_start <= sched_dt <= run_kst:
                 time_window = "DAY_REVIEW"
-            elif today_1630 < sched_dt <= tomorrow_0600:
+            elif run_kst < sched_dt <= tomorrow_0600:
                 time_window = "TODAY_NIGHT"
             elif tomorrow_0600 < sched_dt <= next_week:
                 time_window = "UPCOMING_WEEK"

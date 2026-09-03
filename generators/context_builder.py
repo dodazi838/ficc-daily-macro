@@ -140,14 +140,13 @@ class AIContextBuilder:
             ]
         }
 
-        cutoff_kst = processed_data.get("cutoff_kst", f"{report_date} 16:30:00 KST")
         run_time_kst = processed_data.get("run_time_kst", "")
+        as_of = processed_data.get("as_of", "") or (run_time_kst[11:16] + " 기준" if len(run_time_kst) >= 16 else "실시간 기준")
 
         return {
             "report_date": report_date,
-            "cutoff_kst": cutoff_kst,
             "run_time_kst": run_time_kst,
-            "target_time_kst": "16:30 KST (정규 마감 확정치)",
+            "as_of": as_of,
             "market_data": {
                 "fx": fx_items,
                 "bonds": bond_items,

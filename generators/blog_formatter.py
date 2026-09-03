@@ -312,7 +312,7 @@ class NaverBlogFormatter:
             lines.append("금일 밤(16:30 이후) 주요 발표 예정 지표")
             lines.append(f"{'국가':<6} | {'예정시각':<16} | {'중요도':<6} | {'지표명 (한글)':<32} | {'예상치':>8}")
             lines.append("-" * 75)
-            for ev in today_night[:8]:
+            for ev in today_night:
                 imp_star = "★★★" if ev.get("importance") == "HIGH" else ("★★" if ev.get("importance") == "MEDIUM" else "★")
                 time_short = ev.get("scheduled_at_kst", "")[11:16]
                 f_val = ev.get("forecast") or "-"
@@ -485,7 +485,7 @@ class NaverBlogFormatter:
         today_night = economic_events.get("today_night_events", [])
         if today_night:
             event_rows = []
-            for ev in today_night[:8]:
+            for ev in today_night:
                 imp_star = "★★★" if ev.get("importance") == "HIGH" else ("★★" if ev.get("importance") == "MEDIUM" else "★")
                 time_short = ev.get("scheduled_at_kst", "")[11:16]
                 kor_event_name = cls.translate_event_name(ev.get("event_name", ""), ev.get("country", ""))

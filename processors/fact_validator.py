@@ -78,20 +78,21 @@ class FactValidator:
             if not sec_text:
                 continue
 
-            sec_errors, sec_warnings, sec_verified = cls._validate_section_text(
-                sec_name, sec_text, asset_allowed_numbers, all_valid_context_numbers
-            )
-            errors.extend(sec_errors)
-            warnings.extend(sec_warnings)
-            verified_count += sec_verified
-
             if sec_name == "daily_event_watchpoints":
                 event_errors = cls._validate_daily_event_section(sec_text, raw_context)
                 errors.extend(event_errors)
-            
-            score = 100.0 - (len(sec_errors) * 35.0) - (len(sec_warnings) * 10.0)
-            score = max(0.0, score)
-            section_scores.append(score)
+                score = max(0.0, 100.0 - (len(event_errors) * 35.0))
+                section_scores.append(score)
+            else:
+                sec_errors, sec_warnings, sec_verified = cls._validate_section_text(
+                    sec_name, sec_text, asset_allowed_numbers, all_valid_context_numbers
+                )
+                errors.extend(sec_errors)
+                warnings.extend(sec_warnings)
+                verified_count += sec_verified
+                score = 100.0 - (len(sec_errors) * 35.0) - (len(sec_warnings) * 10.0)
+                score = max(0.0, score)
+                section_scores.append(score)
 
         # Source ID 검증
         today_night_eids = {

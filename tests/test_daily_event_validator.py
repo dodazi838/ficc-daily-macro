@@ -173,14 +173,14 @@ class TestDailyEventValidator(unittest.TestCase):
         self.assertGreater(len(errors), 0, "날조된 예상치(55.2)가 적발되지 않음")
         self.assertTrue(any("55.2" in e for e in errors))
 
-    def test_scenario_e_past_event_as_upcoming_fail(self):
-        """Test E: 16:30 이전 이미 발표된 과거 지표(프랑스 재정수지 15:45, ISM PMI 등)를 upcoming으로 삽입 -> FAIL"""
-        invalid_text = (
-            "금일 밤에는 프랑스 정부 재정수지 및 미국 ISM 제조업 PMI 발표를 앞두고 관망세가 짙어질 것으로 보인다."
+    def test_scenario_e_day_review_and_upcoming_combination_pass(self):
+        """Test E: 당일 기발표 주요 지표(프랑스 재정수지, ISM PMI) 리뷰 + 야간 예정 지표(ADP 고용) 결합 서술 -> PASS"""
+        valid_combo_text = (
+            "금일 15:45 발표된 프랑스 정부 재정수지와 전일 ISM 제조업 PMI를 통해 제조업 경기 흐름이 점검됨. "
+            "이어 21:15에는 미국 ADP 비농업 부문 고용 변화가 예정되어 있어 노동시장 냉각 여부를 확인할 필요가 있음."
         )
-        errors = FactValidator._validate_daily_event_section(invalid_text, self.base_context)
-        self.assertGreater(len(errors), 0, "과거 지표(프랑스 재정수지 / ISM 제조업 PMI) upcoming 인용이 적발되지 않음")
-        self.assertTrue(any("재정수지" in e or "ISM" in e for e in errors))
+        errors = FactValidator._validate_daily_event_section(valid_combo_text, self.base_context)
+        self.assertEqual(len(errors), 0, f"당일 발표 리뷰 + 예정 지표 결합 서술에서 오류 발생: {errors}")
 
     def test_scenario_f_empty_events_handling(self):
         """Test F: 실제 이벤트가 없는 경우 -> 빈 목록 정상 통과 및 허위 작성 차단"""

@@ -119,12 +119,12 @@ class FactValidator:
                 if eid and eid not in all_event_ids:
                     errors.append(f"존재하지 않는 event_id 인용: {eid}")
 
-        # daily_event_watchpoints의 source_event_ids는 반드시 today_night_events여야 함
+        # daily_event_watchpoints의 source_event_ids는 캘린더 전체(today_night 및 day_review)에 존재해야 함
         dev_obj = generated_content.get("daily_event_watchpoints", {})
         if dev_obj:
             for eid in dev_obj.get("source_event_ids", []):
-                if eid and eid not in today_night_eids:
-                    errors.append(f"[daily_event_watchpoints] 금일 야간(16:30 이후) 발표 일정이 아닌 event_id 인용: {eid}")
+                if eid and eid not in all_event_ids:
+                    errors.append(f"[daily_event_watchpoints] 금일 캘린더에 존재하지 않는 event_id 인용: {eid}")
 
         is_passed = (len(errors) == 0)
         avg_score = sum(section_scores) / len(section_scores) if section_scores else 100.0
@@ -382,49 +382,58 @@ class FactValidator:
                 errors.append("[daily_event_watchpoints] 금일 16:30 이후 예정된 지표가 없으나 본문에 허위 발표 일정이 작성되었습니다.")
             return errors
 
-        # Canonical 데이터 코퍼스 및 매핑 구축
-        today_night_text_corpus = []
+        # Canonical 데이터 코퍼스 및 매핑 구축 (today_night + day_review 통합)
+        all_valid_events = list(today_night) + list(day_review)
+        valid_text_corpus = []
         canonical_times = set()
         canonical_forecast_nums = set()
-        canonical_event_forecast_map = {}
+        canonical_actual_nums = set()
 
-        for ev in today_night:
+        for ev in all_valid_events:
             ev_name = ev.get("event_name", "")
             ev_kor = ev.get("event_name_kor", "")
-            today_night_text_corpus.append(ev_name.lower())
-            today_night_text_corpus.append(ev_kor.lower())
+            valid_text_corpus.append(ev_name.lower())
+            valid_text_corpus.append(ev_kor.lower())
 
             # 시각 (HH:MM)
             sched_time = ev.get("scheduled_time_kst") or (ev.get("scheduled_at", "")[11:16] if len(ev.get("scheduled_at", "")) >= 16 else "")
             if sched_time:
                 canonical_times.add(sched_time)
                 # "19시 45분", "19시", "01시 15분", "1시 15분" 형태 변형 허용
-                h_str, m_str = sched_time.split(":")
-                h_int = int(h_str)
-                m_int = int(m_str)
-                canonical_times.add(f"{h_int}:{m_str}")
-                canonical_times.add(f"{h_int}시 {m_int}분" if m_int > 0 else f"{h_int}시")
-                canonical_times.add(f"{h_str}시 {m_str}분" if m_int > 0 else f"{h_str}시")
+                if ":" in sched_time:
+                    try:
+                        h_str, m_str = sched_time.split(":")[:2]
+                        h_int = int(h_str)
+                        m_int = int(m_str)
+                        canonical_times.add(f"{h_int}:{m_str}")
+                        canonical_times.add(f"{h_int}시 {m_int}분" if m_int > 0 else f"{h_int}시")
+                        canonical_times.add(f"{h_str}시 {m_str}분" if m_int > 0 else f"{h_str}시")
+                    except Exception:
+                        pass
 
             # 예상치 (forecast)
             f_val = ev.get("forecast")
             if f_val and str(f_val).strip() not in ["-", "None", ""]:
-                f_str = str(f_val).strip()
-                canonical_event_forecast_map[ev_name.lower()] = f_str
-                canonical_event_forecast_map[ev_kor.lower()] = f_str
-                # 예상치 내 숫자 추출
-                f_nums = re.findall(r'[-+]?\d+(?:\.\d+)?', f_str)
+                f_nums = re.findall(r'[-+]?\d+(?:\.\d+)?', str(f_val).strip())
                 for fn in f_nums:
                     try:
                         canonical_forecast_nums.add(float(fn))
                         canonical_forecast_nums.add(abs(float(fn)))
                     except ValueError:
                         pass
-            else:
-                canonical_event_forecast_map[ev_name.lower()] = None
-                canonical_event_forecast_map[ev_kor.lower()] = None
 
-        combined_corpus = " ".join(today_night_text_corpus)
+            # 실제치 (actual)
+            a_val = ev.get("actual")
+            if a_val and str(a_val).strip() not in ["-", "None", ""]:
+                a_nums = re.findall(r'[-+]?\d+(?:\.\d+)?', str(a_val).strip())
+                for an in a_nums:
+                    try:
+                        canonical_actual_nums.add(float(an))
+                        canonical_actual_nums.add(abs(float(an)))
+                    except ValueError:
+                        pass
+
+        combined_corpus = " ".join(valid_text_corpus)
 
         # 주요 글로벌 경제 지표 키워드 감지 사전
         KNOWN_INDICATORS = {
@@ -449,38 +458,23 @@ class FactValidator:
 
         text_lower = text.lower()
 
-        # 1. 본문에 언급된 지표가 오늘 야간 발표 목록(today_night)에 존재하는지 전수 대조
+        # 1. 본문에 언급된 지표가 오늘 캘린더 목록(day_review 또는 today_night)에 존재하는지 전수 대조
         for ind_name, keywords in KNOWN_INDICATORS.items():
             if any(kw in text_lower for kw in keywords):
                 if not any(kw in combined_corpus for kw in keywords):
                     errors.append(
-                        f"[daily_event_watchpoints] 금일 야간 발표 예정 목록에 없는 지표 인용 오류: "
-                        f"'{ind_name}' 관련 지표는 오늘 16:30 이후 발표 예정 목록(today_night)에 존재하지 않습니다."
+                        f"[daily_event_watchpoints] 금일 캘린더 목록에 없는 지표 인용 오류: "
+                        f"'{ind_name}' 관련 지표는 오늘 발표되었거나 예정된 지표 목록에 존재하지 않습니다."
                     )
 
-        # 2. 이미 발표된 과거 지표(day_review) 인용 여부 검사
-        day_review_corpus = []
-        for dev in day_review:
-            day_review_corpus.append(dev.get("event_name", "").lower())
-            day_review_corpus.append(dev.get("event_name_kor", "").lower())
-        day_combined = " ".join(day_review_corpus)
-
-        for ind_name, keywords in KNOWN_INDICATORS.items():
-            if any(kw in text_lower for kw in keywords):
-                if any(kw in day_combined for kw in keywords) and not any(kw in combined_corpus for kw in keywords):
-                    errors.append(
-                        f"[daily_event_watchpoints] 이미 발표된 과거 지표 인용 오류: "
-                        f"'{ind_name}'은 기준시각 이전에 이미 발표된 지표로, 발표 예정 지표(upcoming)로 작성할 수 없습니다."
-                    )
-
-        # 3. 본문에 언급된 시각(HH:MM 또는 X시 Y분) 정합성 검사
+        # 2. 본문에 언급된 시각(HH:MM 또는 X시 Y분) 정합성 검사
         as_of_val = raw_context.get("as_of", "")
         run_time_val = raw_context.get("run_time_kst", "")
         as_of_hhmm = run_time_val[11:16] if len(run_time_val) >= 16 else ""
 
         time_matches = re.findall(r'(?<!\d)([0-2]?\d:[0-5]\d)(?!\d)', text)
         for tm in time_matches:
-            # 보고서 기준시각(예: 16:30, 23:22 등)은 본문에서 언급될 수 있으므로 예외
+            # 보고서 기준시각(예: 16:30, 23:25 등)은 본문에서 언급될 수 있으므로 예외
             if tm in ["16:30", "16:30:00", as_of_hhmm] or (as_of_val and tm in as_of_val):
                 continue
             # "01:15" vs "1:15" 정규화
@@ -488,11 +482,10 @@ class FactValidator:
             if tm not in canonical_times and tm_norm not in canonical_times:
                 errors.append(
                     f"[daily_event_watchpoints] canonical 일정과 불일치하는 발표 시각 인용: "
-                    f"'{tm}'은 당일 발표 예정 목록의 공식 발표시각과 불일치합니다."
+                    f"'{tm}'은 당일 발표/예정 목록의 공식 발표시각과 불일치합니다."
                 )
 
-        # 4. 시장 예상치(forecast) 날조 및 불일치 검증
-        # '예상치 55.2', '예상 47K', '전망치 0.7%' 등 검출
+        # 3. 시장 예상치(forecast) 날조 및 불일치 검증
         forecast_mentions = re.findall(r'(?:예상치?|전망치?|컨센서스)\s*(?:는|가|로|:)?\s*([-+]?\d+(?:\.\d+)?)\s*(?:k|m|b|%|pt|만|억)?', text, re.IGNORECASE)
         for fm in forecast_mentions:
             try:
@@ -500,9 +493,10 @@ class FactValidator:
                 if fm_float not in canonical_forecast_nums and abs(fm_float) not in canonical_forecast_nums:
                     errors.append(
                         f"[daily_event_watchpoints] 원천 데이터에 없는 시장 예상치(forecast) 인용/날조 오류: "
-                        f"수치 '{fm}'은 당일 야간 발표 예정 지표의 공식 예상치 목록에 존재하지 않습니다."
+                        f"수치 '{fm}'은 당일 캘린더의 공식 예상치 목록에 존재하지 않습니다."
                     )
             except ValueError:
+                pass
                 pass
 
         return errors

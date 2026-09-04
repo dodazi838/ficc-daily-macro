@@ -172,10 +172,11 @@ class FiccReportGenerator:
 {error_feedback_text}
 
 [절대 수정 지침]
-1. 위에서 적발된 허위/미제공 수치(예: 미제공 이동평균선 '50일선', 임의의 확률 % '68%', 컨텍스트에 없는 수치)를 본문에서 즉시 완전히 삭제하거나, 반드시 아래 [Context JSON]에 제공된 정확한 당일 시장 데이터 수치로만 대체하라.
-2. daily_event_watchpoints 본문은 반드시 [Context JSON]의 economic_calendar.today_night 에 실제로 존재하는 지표(예: ADP 비농업 고용, BOC 기준금리, EIA 원유재고 등)와 제공된 forecast 예상치만을 다루어라. 목록에 없는 지표(ISM PMI, JOLTS 등)는 완전히 제거하라.
-3. 당일 시장 데이터 및 캘린더에 없는 숫자를 절대 새로 추정하거나 날조하지 마라.
-4. 지정된 JSON 포맷을 완벽히 준수하여 다시 작성하라.
+1. 위에서 적발된 허위/미제공 수치(예: SSOT에 없는 임의의 지표 발표 수치, 미제공 이동평균선, 임의의 확률 % 등)를 본문에서 즉시 완전히 삭제하거나, 반드시 아래 [Context JSON]에 제공된 정확한 수치로만 대체하라.
+2. 특히 경제지표의 실제치(actual)가 null인 경우(예: 비농업 고용 등), 절대 가상의 발표 수치(예: 16만 건 등)를 지어내지 마라. 오직 SSOT에 제공된 forecast(예상치)나 prior(전월치)만 인용하거나 발표 대기/관망 흐름으로만 서술하라.
+3. daily_event_watchpoints는 [Context JSON]의 economic_calendar(day_review 및 today_night)에 실제로 존재하는 지표만을 다루어라. 향후 예정 지표(today_night)가 비어있는 경우("[]"), 예정 지표를 지어내지 말고 "금일 실행 시각 이후 주요 발표 예정 지표는 부재함"으로 간결히 마무리하라.
+4. 반드시 존댓말 없이 연구노트형 평서체(~함, ~임, ~나타남, ~확인됨, ~작용함)를 유지하라.
+5. 지정된 JSON 포맷을 완벽히 준수하여 다시 작성하라.
 
 [Context JSON]
 {json.dumps(context, ensure_ascii=False, indent=2)}

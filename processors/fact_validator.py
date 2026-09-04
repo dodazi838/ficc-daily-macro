@@ -396,12 +396,16 @@ class FactValidator:
         today_night = economic_cal.get("today_night", [])
         day_review = economic_cal.get("day_review", [])
 
-        # 0. today_night가 비어있는 경우
-        if not today_night:
-            # 본문에 구체적인 이벤트 발표를 언급했는지 확인
-            if any(w in text for w in ["발표될 예정", "발표를 앞두고", "예상치", "공개될"]):
-                errors.append("[daily_event_watchpoints] 금일 16:30 이후 예정된 지표가 없으나 본문에 허위 발표 일정이 작성되었습니다.")
+        # 0. 전체 캘린더(today_night 및 day_review)가 모두 비어있는 경우
+        if not today_night and not day_review:
+            if any(w in text for w in ["발표될 예정", "발표를 앞두고", "공개될"]):
+                errors.append("[daily_event_watchpoints] 금일 발표되었거나 예정된 지표가 없으나 본문에 허위 발표 일정이 작성되었습니다.")
             return errors
+
+        # 0-1. today_night(향후 예정 일정)가 비어있는 경우: 향후 발표 예정 허위 일정 작성 차단
+        if not today_night:
+            if any(w in text for w in ["발표될 예정", "발표를 앞두고", "공개될 예정", "발표가 예정되어 있어"]):
+                errors.append("[daily_event_watchpoints] 금일 실행 시각 이후 예정된 지표가 없으나 본문에 향후 발표 예정 일정이 허위로 작성되었습니다.")
 
         # Canonical 데이터 코퍼스 및 매핑 구축 (today_night + day_review 통합)
         all_valid_events = list(today_night) + list(day_review)
@@ -495,8 +499,8 @@ class FactValidator:
 
         time_matches = re.findall(r'(?<!\d)([0-2]?\d:[0-5]\d)(?!\d)', text)
         for tm in time_matches:
-            # 보고서 기준시각(예: 16:30, 23:25 등)은 본문에서 언급될 수 있으므로 예외
-            if tm in ["16:30", "16:30:00", as_of_hhmm] or (as_of_val and tm in as_of_val):
+            # 보고서 기준시각(예: 16:30, 23:25 등) 및 윈도우 마감시각(06:00)은 본문에서 언급될 수 있으므로 예외
+            if tm in ["16:30", "16:30:00", "06:00", as_of_hhmm] or (as_of_val and tm in as_of_val):
                 continue
             # "01:15" vs "1:15" 정규화
             tm_norm = tm if len(tm) == 5 else f"0{tm}"

@@ -82,6 +82,115 @@ class MacroEventProcessor:
         return score
 
     @classmethod
+    def get_macro_priority(cls, ev: Dict[str, Any]) -> int:
+        """
+        매크로 이벤트 정량/정책 우선순위 계층 판정:
+        - Tier 4: 미국 핵심 고용(Non-farm, Unemployment rate, Jobless claims, ADP, JOLTS), 물가(CPI, PPI, PCE), ISM(제조업/서비스업), GDP, 소매판매, 중앙은행 금리결정(FOMC, BOC, ECB, BOJ, BOE 등)
+        - Tier 3: 주요 글로벌(G7, 중국 등) CPI/GDP/고용 및 미국 원유재고(Crude Oil Inventories)
+        - Tier 2: 중앙은행 주요 인사 발언(연준 의장, 이사, 통화정책 성명 등)
+        - Tier 1: 기타 주요 지표(무역수지, 소비자심리지수, 공장재 수주 등)
+        - Tier 0: 기타 지표
+        """
+        name = ev.get("event_name", "")
+        name_lower = name.lower()
+        country = ev.get("country", "")
+
+        # 원칙적 제외 항목은 Tier -1
+        if any(w in name_lower for w in ["auction", "bond auction", "bill auction", "tbill"]):
+            return -1
+        if any(w in name_lower for w in ["final services pmi", "final manufacturing pmi"]):
+            return -1
+        if any(w in name_lower for w in ["italian services", "spanish services", "spanish manufacturing", "french final", "german final"]):
+            return -1
+        if any(w in name_lower for w in ["challenger job cuts", "natural gas storage", "holiday", "bank holiday"]):
+            return -1
+
+        if country == "US":
+            if any(w in name_lower for w in ["non-farm payroll", "non-farm employment", "adp non-farm", "unemployment rate", "unemployment claims", "jobless claims", "jolts"]):
+                return 4
+            if any(w in name_lower for w in ["cpi", "core cpi", "ppi", "core ppi", "pce", "core pce"]):
+                return 4
+            if any(w in name_lower for w in ["ism manufacturing", "ism services", "retail sales", "gdp"]):
+                return 4
+            if any(w in name_lower for w in ["fomc", "federal funds rate", "rate decision"]):
+                return 4
+            if any(w in name_lower for w in ["crude oil inventories"]):
+                return 3
+            if any(w in name_lower for w in ["powell speaks", "waller speaks", "williams speaks", "cook speaks", "bowman speaks", "goolsbee speaks", "hammack speaks", "speaks", "beige book"]):
+                return 2
+            if any(w in name_lower for w in ["factory orders", "trade balance", "consumer confidence", "consumer sentiment"]):
+                return 1
+            return 0
+        elif country in ["CA", "EU", "GB", "JP", "CN", "GLOBAL"]:
+            if any(w in name_lower for w in ["rate statement", "overnight rate", "monetary policy", "interest rate", "ecb", "boe", "boj", "rbnz"]):
+                return 4
+            if any(w in name_lower for w in ["cpi", "ppi", "gdp", "employment change"]):
+                return 3
+            if any(w in name_lower for w in ["press conference", "gov speaks", "president speaks"]):
+                return 2
+            return 1
+        return 0
+
+    @classmethod
+    def curate_day_review_events(cls, events: List[Dict[str, Any]], run_time_kst: Any = None) -> List[Dict[str, Any]]:
+        """
+        당일 주요 발표 이벤트 (Past Events) 2~4개 선별:
+        1. 실제 발표 결과(actual) 존재 여부 최우선
+        2. canonical 매크로 우선순위(미국 핵심 고용·물가·ISM·GDP·소매판매·금리결정 등) 적용
+        3. score_macro_event 점수 보조 기준 결합
+        4. 시장 영향이 미미한 단순 이벤트 제외 후 상위 2~4개 엄선
+        5. 시간순(scheduled_at_kst) 정렬
+        """
+        if not events:
+            return []
+
+        run_kst = ensure_kst_aware(run_time_kst)
+        today_start = run_kst.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # 1. 당일(today) 이벤트 우선 필터링
+        today_candidates = []
+        for ev in events:
+            sched_dt = ev.get("scheduled_dt_kst") or ev.get("scheduled_at_kst")
+            if sched_dt:
+                sched_dt_kst = ensure_kst_aware(sched_dt)
+                if today_start <= sched_dt_kst <= run_kst:
+                    today_candidates.append(ev)
+            elif ev.get("time_window") == "DAY_REVIEW":
+                today_candidates.append(ev)
+
+        # 당일 발표 이벤트가 충분치 않으면 전체 전달된 목록 풀 활용
+        pool = today_candidates if len(today_candidates) >= 2 else events
+
+        scored_pool = []
+        for ev in pool:
+            sc = cls.score_macro_event(ev)
+            prio = cls.get_macro_priority(ev)
+            if sc <= 0 or prio < 0:
+                continue
+
+            # actual 존재 여부 (공백, "-", "None" 제외)
+            act_val = ev.get("actual")
+            has_actual = 1 if (act_val is not None and str(act_val).strip() not in ["", "-", "None"]) else 0
+
+            # 정량 지표 여부 (forecast나 prior가 있는 정규 발표 지표 우선)
+            fc_or_pr = 1 if (ev.get("forecast") or ev.get("prior") or ev.get("previous")) else 0
+
+            # 복합 우선순위 튜플: (actual 유무, 정량지표 유무, 매크로 우선순위 티어, 매크로 점수)
+            sort_tuple = (has_actual, fc_or_pr, prio, sc)
+            scored_pool.append((sort_tuple, ev))
+
+        if not scored_pool:
+            return []
+
+        scored_pool.sort(key=lambda x: x[0], reverse=True)
+        # 상위 2~4개 선별 (유효 지표가 4개 이상이면 4개, 최소 2개 이상)
+        curated_count = min(max(2, min(4, len(scored_pool))), 4)
+        curated = [x[1] for x in scored_pool[:curated_count]]
+        # 시간순 정렬
+        curated.sort(key=lambda x: x.get("scheduled_at_kst", ""))
+        return curated
+
+    @classmethod
     def process_calendar_events(cls, raw_events: List[Dict[str, Any]], run_time_kst: datetime.datetime) -> Dict[str, Any]:
         if not raw_events:
             return {
@@ -188,7 +297,10 @@ class MacroEventProcessor:
             elif time_window == "UPCOMING_WEEK" and importance in ["HIGH", "MEDIUM"]:
                 upcoming_week_list.append(item)
 
-        # 4. TODAY_NIGHT 핵심 매크로 이벤트 선별 (금융시장 영향력 스코어 >= 35점, 최대 6개)
+        # 4. 당일 주요 발표 이벤트 (DAY_REVIEW) 큐레이션 (상위 2~4개 선별)
+        curated_day_review = cls.curate_day_review_events(day_review_list, run_kst)
+
+        # 5. TODAY_NIGHT 핵심 매크로 이벤트 선별 (금융시장 영향력 스코어 >= 35점, 최대 6개)
         scored_night = []
         for ev_item in raw_today_night_list:
             sc = cls.score_macro_event(ev_item)
@@ -202,12 +314,12 @@ class MacroEventProcessor:
         return {
             "total_events": len(all_processed),
             "counts_by_window": {
-                "DAY_REVIEW": len(day_review_list),
+                "DAY_REVIEW": len(curated_day_review),
                 "TODAY_NIGHT": len(curated_today_night),
                 "UPCOMING_WEEK": len(upcoming_week_list),
-                "OTHER": len(all_processed) - (len(day_review_list) + len(curated_today_night) + len(upcoming_week_list))
+                "OTHER": len(all_processed) - (len(curated_day_review) + len(curated_today_night) + len(upcoming_week_list))
             },
-            "day_review_events": day_review_list,
+            "day_review_events": curated_day_review,
             "today_night_events": curated_today_night,
             "upcoming_week_events": upcoming_week_list,
             "all_processed_events": all_processed

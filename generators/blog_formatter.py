@@ -11,7 +11,8 @@
        - 표기: '$90.15', '$94.97', '$4,373.90' (상세 단위 제거 및 $ 접두어 적용)
     4. 스마트에디터 ONE 복사·붙여넣기 테이블 열 너비 고정:
        - table-layout: fixed 및 colgroup / th / td 인라인 width 명시
-       - Daily Event 표: 국가(10%, center), 예정시각(17%, center), 중요도(12%, center), 지표명(43%, left, keep-all), 시장예상치(18%, right)
+       - Daily Event 표 1 (당일 주요 발표, 7열): 국가(9%), 발표시각(14%), 중요도(11%), 지표명(36%), 실제치(10%), 예상치(10%), 전월치(10%)
+       - Daily Event 표 2 (향후 주요 발표, 5열): 국가(10%), 예정시각(17%), 중요도(12%), 지표명(43%), 시장예상치(18%)
        - 3열 시장 표: 품목/지수명(46%, left), 가격/환율/수익률(30%, right), 등락률/변동(24%, right)
     5. 네이버 블로그 스마트에디터 실측 픽셀(px) 규격:
        - 주요 섹션 제목: 19px Bold (#000000)
@@ -324,17 +325,40 @@ class NaverBlogFormatter:
         lines.append(content.get("daily_event_watchpoints", {}).get("text", ""))
         lines.append("")
 
+        from processors.event_processor import MacroEventProcessor
+        raw_day_review = economic_events.get("day_review_events", [])
+        curated_day = MacroEventProcessor.curate_day_review_events(raw_day_review, run_time_val) if len(raw_day_review) > 4 else raw_day_review
+
+        # 1. 당일 주요 발표 지표 표
+        lines.append(f"당일 주요 발표 ({as_of_time} 이전)")
+        if curated_day:
+            lines.append(f"{'국가':<6} | {'발표시각':<8} | {'중요도':<6} | {'지표명 (한글)':<28} | {'실제치':>8} | {'예상치':>8} | {'전월치':>8}")
+            lines.append("-" * 84)
+            for ev in curated_day:
+                imp_star = "★★★" if ev.get("importance") == "HIGH" else ("★★" if ev.get("importance") == "MEDIUM" else "★")
+                time_short = ev.get("scheduled_time_kst") or (ev.get("scheduled_at_kst", "")[11:16] if len(ev.get("scheduled_at_kst", "")) >= 16 else "-")
+                kor_event_name = cls.translate_event_name(ev.get("event_name", ""), ev.get("country", ""))
+                act_val = ev.get("actual") or "-"
+                fc_val = ev.get("forecast") or "-"
+                pr_val = ev.get("prior") or ev.get("previous") or "-"
+                lines.append(f"{ev.get('country', ''):<6} | {time_short:<8} | {imp_star:<6} | {kor_event_name[:26]:<28} | {act_val:>8} | {fc_val:>8} | {pr_val:>8}")
+            lines.append("")
+        else:
+            lines.append(f"※ 금일 {as_of_time} 이전 주요 발표 지표 없음")
+            lines.append("")
+
+        # 2. 향후 주요 발표 예정 지표 표
         today_night = economic_events.get("today_night_events", [])
+        lines.append(f"향후 주요 발표 ({as_of_time} 이후)")
         if today_night:
-            lines.append(f"주요 발표 예정 지표 ({as_of_time} 이후)")
-            lines.append(f"{'국가':<6} | {'예정시각':<16} | {'중요도':<6} | {'지표명 (한글)':<32} | {'예상치':>8}")
-            lines.append("-" * 75)
+            lines.append(f"{'국가':<6} | {'예정시각':<8} | {'중요도':<6} | {'지표명 (한글)':<32} | {'예상치':>8}")
+            lines.append("-" * 72)
             for ev in today_night:
                 imp_star = "★★★" if ev.get("importance") == "HIGH" else ("★★" if ev.get("importance") == "MEDIUM" else "★")
-                time_short = ev.get("scheduled_at_kst", "")[11:16]
+                time_short = ev.get("scheduled_time_kst") or (ev.get("scheduled_at_kst", "")[11:16] if len(ev.get("scheduled_at_kst", "")) >= 16 else "-")
                 f_val = ev.get("forecast") or "-"
                 kor_event_name = cls.translate_event_name(ev.get("event_name", ""), ev.get("country", ""))
-                lines.append(f"{ev.get('country', ''):<6} | {time_short:<16} | {imp_star:<6} | {kor_event_name[:30]:<32} | {f_val:>8}")
+                lines.append(f"{ev.get('country', ''):<6} | {time_short:<8} | {imp_star:<6} | {kor_event_name[:30]:<32} | {f_val:>8}")
             lines.append("")
         else:
             lines.append(f"※ 금일 {as_of_time} 이후 주요 발표 예정 지표 없음")
@@ -499,14 +523,47 @@ class NaverBlogFormatter:
         html.append(f'<p style="font-family: {FONT_FAMILY}; font-size: 19px; font-weight: bold; color: #000000; border-left: 4px solid #000000; padding-left: 10px; margin: 35px 0 15px 0;"><span style="font-size: 19px; font-weight: bold; color: #000000;">Daily Event</span></p>')
         event_wp = content.get("daily_event_watchpoints", {}).get("text", "")
         if event_wp:
-            html.append(f'<p style="font-family: {FONT_FAMILY}; font-size: 16px; font-weight: normal; line-height: 1.85; color: #000000; margin: 0 0 15px 0;"><span style="font-size: 16px; font-weight: normal; color: #000000;">{event_wp}</span></p>')
+            html.append(f'<p style="font-family: {FONT_FAMILY}; font-size: 16px; font-weight: normal; line-height: 1.85; color: #000000; margin: 0 0 20px 0; text-align: justify;"><span style="font-size: 16px; font-weight: normal; color: #000000;">{event_wp}</span></p>')
 
+        from processors.event_processor import MacroEventProcessor
+        raw_day_review = economic_events.get("day_review_events", [])
+        curated_day = MacroEventProcessor.curate_day_review_events(raw_day_review, run_time_val) if len(raw_day_review) > 4 else raw_day_review
+
+        # [1] 당일 주요 발표 지표 표 (실제치, 예상치, 전월치 포함 7열)
+        if curated_day:
+            day_rows = []
+            for ev in curated_day:
+                imp_star = "★★★" if ev.get("importance") == "HIGH" else ("★★" if ev.get("importance") == "MEDIUM" else "★")
+                time_short = ev.get("scheduled_time_kst") or (ev.get("scheduled_at_kst", "")[11:16] if len(ev.get("scheduled_at_kst", "")) >= 16 else "-")
+                kor_event_name = cls.translate_event_name(ev.get("event_name", ""), ev.get("country", ""))
+                day_rows.append([
+                    ev.get("country", ""),
+                    time_short,
+                    f'<span style="color: #e65100; font-weight: bold;">{imp_star}</span>',
+                    kor_event_name,
+                    ev.get("actual") or "-",
+                    ev.get("forecast") or "-",
+                    ev.get("prior") or ev.get("previous") or "-"
+                ])
+
+            html.append(cls._render_table_html(
+                title=f"당일 주요 발표 ({as_of_time} 이전)",
+                headers=["국가", "발표시각", "중요도", "지표명", "실제치", "예상치", "전월치"],
+                rows=day_rows,
+                font_family=FONT_FAMILY,
+                col_widths=["9%", "14%", "11%", "36%", "10%", "10%", "10%"],
+                col_aligns=["center", "center", "center", "left", "right", "right", "right"]
+            ))
+        else:
+            html.append(f'<p style="font-family: {FONT_FAMILY}; font-size: 14px; font-weight: normal; color: #6c757d; margin: 10px 0 20px 0;"><span style="font-size: 14px; color: #6c757d;">※ 금일 {as_of_time} 이전 주요 발표 지표 없음</span></p>')
+
+        # [2] 향후 주요 발표 예정 지표 표
         today_night = economic_events.get("today_night_events", [])
         if today_night:
             event_rows = []
             for ev in today_night:
                 imp_star = "★★★" if ev.get("importance") == "HIGH" else ("★★" if ev.get("importance") == "MEDIUM" else "★")
-                time_short = ev.get("scheduled_at_kst", "")[11:16]
+                time_short = ev.get("scheduled_time_kst") or (ev.get("scheduled_at_kst", "")[11:16] if len(ev.get("scheduled_at_kst", "")) >= 16 else "-")
                 kor_event_name = cls.translate_event_name(ev.get("event_name", ""), ev.get("country", ""))
                 event_rows.append([
                     ev.get("country", ""),
@@ -518,7 +575,7 @@ class NaverBlogFormatter:
 
             # 네이버 스마트에디터 복사·붙여넣기 시에도 열 너비가 균등 배분되지 않도록 전용 폭/정렬 지정
             html.append(cls._render_table_html(
-                title=f"주요 발표 예정 지표 ({as_of_time} 이후)",
+                title=f"향후 주요 발표 ({as_of_time} 이후)",
                 headers=["국가", "예정시각", "중요도", "지표명", "시장예상치"],
                 rows=event_rows,
                 font_family=FONT_FAMILY,

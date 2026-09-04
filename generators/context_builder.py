@@ -106,6 +106,11 @@ class AIContextBuilder:
         # 3. 경제 캘린더 정제 (DAY_REVIEW + TODAY_NIGHT)
         # ※ 16:30 KST 이후 야간 발표 예정 이벤트는 단일 원천 데이터(SSOT)로 관리
         from generators.blog_formatter import NaverBlogFormatter
+        from processors.event_processor import MacroEventProcessor
+
+        raw_day_review = economic_events.get("day_review_events", [])
+        run_time_val = processed_data.get("run_time_kst")
+        curated_day = MacroEventProcessor.curate_day_review_events(raw_day_review, run_time_val) if len(raw_day_review) > 4 else raw_day_review
         
         calendar = {
             "day_review": [
@@ -123,7 +128,7 @@ class AIContextBuilder:
                     "previous": ev.get("prior") or ev.get("previous"),
                     "impact_category": ev.get("impact_category")
                 }
-                for ev in economic_events.get("day_review_events", [])
+                for ev in curated_day
             ],
             "today_night": [
                 {

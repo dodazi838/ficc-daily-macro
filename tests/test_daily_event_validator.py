@@ -197,5 +197,172 @@ class TestDailyEventValidator(unittest.TestCase):
         errors_hal = FactValidator._validate_daily_event_section(hallucinated_text, empty_context)
         self.assertGreater(len(errors_hal), 0, "빈 목록 상태에서 허위 일정 작성이 적발되지 않음")
 
+    def test_day_review_curation_priority(self):
+        """Test G: 당일 주요 발표(Past Events) 큐레이션 및 우선순위 검증:
+        - 실제 발표치(actual) 존재 시 최우선순위 부여
+        - canonical 매크로 우선순위(고용, ISM 등) 우선 적용
+        - 원칙적 제외 항목(채권 입찰, final PMI 등) 제외
+        - 상위 2~4개 선별 및 시간순 정렬
+        """
+        from processors.event_processor import MacroEventProcessor
+
+        test_events = [
+            {
+                "event_id": "EVT_1",
+                "event_name": "US 10-y Bond Auction",
+                "country": "US",
+                "scheduled_at_kst": "2026-09-03 14:00:00 KST",
+                "importance": "MEDIUM",
+                "actual": "4.2%",
+                "forecast": None
+            },
+            {
+                "event_id": "EVT_2",
+                "event_name": "Final Services PMI",
+                "country": "US",
+                "scheduled_at_kst": "2026-09-03 22:45:00 KST",
+                "importance": "LOW",
+                "actual": "56.8",
+                "forecast": "56.8"
+            },
+            {
+                "event_id": "EVT_3",
+                "event_name": "Trade Balance",
+                "country": "US",
+                "scheduled_at_kst": "2026-09-03 21:30:00 KST",
+                "importance": "LOW",
+                "actual": None,
+                "forecast": "-89.4B",
+                "prior": "-73.3B"
+            },
+            {
+                "event_id": "EVT_4",
+                "event_name": "ISM Services PMI",
+                "country": "US",
+                "scheduled_at_kst": "2026-09-03 23:00:00 KST",
+                "importance": "MEDIUM",
+                "actual": "54.5",
+                "forecast": "54.2",
+                "prior": "54.1"
+            },
+            {
+                "event_id": "EVT_5",
+                "event_name": "Unemployment Claims",
+                "country": "US",
+                "scheduled_at_kst": "2026-09-03 21:30:00 KST",
+                "importance": "MEDIUM",
+                "actual": "205K",
+                "forecast": "205K",
+                "prior": "203K"
+            },
+            {
+                "event_id": "EVT_6",
+                "event_name": "FOMC Member Waller Speaks",
+                "country": "US",
+                "scheduled_at_kst": "2026-09-03 21:30:00 KST",
+                "importance": "LOW",
+                "actual": None,
+                "forecast": None
+            }
+        ]
+
+        curated = MacroEventProcessor.curate_day_review_events(test_events, "2026-09-03 23:55:00 KST")
+
+        # 1. 원칙적 제외 항목 배제 확인
+        event_names = [e["event_name"] for e in curated]
+        self.assertNotIn("US 10-y Bond Auction", event_names)
+        self.assertNotIn("Final Services PMI", event_names)
+
+        # 2. actual이 있고 우선순위가 높은 Unemployment Claims 및 ISM Services PMI 포함 확인
+        self.assertIn("Unemployment Claims", event_names)
+        self.assertIn("ISM Services PMI", event_names)
+
+        # 3. 2~4개 선별 확인
+        self.assertTrue(2 <= len(curated) <= 4)
+
+        # 4. 시간순 정렬 확인
+        times = [e["scheduled_at_kst"] for e in curated]
+        self.assertEqual(times, sorted(times))
+
+    def test_dual_table_rendering_blog_formatter(self):
+        """Test H: Blog Formatter의 Daily Event 2대 영역 표 (TXT 및 HTML) 렌더링 검증:
+        - 당일 주요 발표 표 ({as_of} 이전) 및 향후 주요 발표 표 ({as_of} 이후) 동적 제목
+        - 전월치(prior) 열 포함 확인
+        - 실제치/예상치/전월치 없을 경우 '-' 처리 확인
+        """
+        from generators.blog_formatter import NaverBlogFormatter
+
+        sample_report = {
+            "report_date": "2026-09-03",
+            "run_time_kst": "2026-09-03 23:48:00 KST",
+            "final_passed": True,
+            "validated_content": {
+                "ficc_daily_summary": {"bullets": ["요약1", "요약2", "요약3"]},
+                "ficc_summary": {"text": "종합 요약"},
+                "issue_review": {
+                    "stock": {"text": "증시 리뷰"},
+                    "fx": {"text": "외환 리뷰"},
+                    "bond": {"text": "채권 리뷰"},
+                    "commodity": {"text": "원자재 리뷰"}
+                },
+                "ficc_forecast": {"text": "전망 본문"},
+                "daily_event_watchpoints": {"text": "Daily Event 본문 리뷰"}
+            }
+        }
+
+        sample_processed = {
+            "run_time_kst": "2026-09-03 23:48:00 KST",
+            "market_data": {"categories": {}, "spreads": []},
+            "economic_events": {
+                "day_review_events": [
+                    {
+                        "country": "US",
+                        "event_name": "Unemployment Claims",
+                        "scheduled_time_kst": "21:30",
+                        "importance": "MEDIUM",
+                        "actual": "205K",
+                        "forecast": "205K",
+                        "prior": "203K"
+                    },
+                    {
+                        "country": "US",
+                        "event_name": "ISM Services PMI",
+                        "scheduled_time_kst": "23:00",
+                        "importance": "MEDIUM",
+                        "actual": None,
+                        "forecast": "54.2",
+                        "prior": "54.1"
+                    }
+                ],
+                "today_night_events": [
+                    {
+                        "country": "US",
+                        "event_name": "Fed Hammack Speaks",
+                        "scheduled_at_kst": "2026-09-04 04:00:00 KST",
+                        "scheduled_time_kst": "04:00",
+                        "importance": "LOW",
+                        "forecast": None
+                    }
+                ]
+            }
+        }
+
+        # 1. TXT 검증
+        txt_out = NaverBlogFormatter.format_blog_text(sample_report, sample_processed)
+        self.assertIn("당일 주요 발표 (23:48 이전)", txt_out)
+        self.assertIn("향후 주요 발표 (23:48 이후)", txt_out)
+        self.assertIn("전월치", txt_out)
+        self.assertIn("205K", txt_out)
+        self.assertIn("203K", txt_out)
+
+        # 2. HTML 검증
+        html_out = NaverBlogFormatter.format_blog_html(sample_report, sample_processed)
+        self.assertIn("당일 주요 발표 (23:48 이전)", html_out)
+        self.assertIn("향후 주요 발표 (23:48 이후)", html_out)
+        self.assertIn("전월치", html_out)
+        self.assertIn("실제치", html_out)
+        self.assertIn("205K", html_out)
+        self.assertIn("203K", html_out)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

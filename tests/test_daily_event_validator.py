@@ -209,7 +209,7 @@ class TestDailyEventValidator(unittest.TestCase):
         test_events = [
             {
                 "event_id": "EVT_1",
-                "event_name": "US 10-y Bond Auction",
+                "event_name": "Challenger Job Cuts",
                 "country": "US",
                 "scheduled_at_kst": "2026-09-03 14:00:00 KST",
                 "importance": "MEDIUM",
@@ -270,7 +270,7 @@ class TestDailyEventValidator(unittest.TestCase):
 
         # 1. 원칙적 제외 항목 배제 확인
         event_names = [e["event_name"] for e in curated]
-        self.assertNotIn("US 10-y Bond Auction", event_names)
+        self.assertNotIn("Challenger Job Cuts", event_names)
         self.assertNotIn("Final Services PMI", event_names)
 
         # 2. actual이 있고 우선순위가 높은 Unemployment Claims 및 ISM Services PMI 포함 확인

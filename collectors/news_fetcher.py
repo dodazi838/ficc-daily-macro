@@ -78,7 +78,7 @@ class FedNewsFetcher(BaseNewsFetcher):
         cutoff_kst = run_kst - datetime.timedelta(hours=lookback_hours)
 
         try:
-            resp = requests.get(self.url, headers=HTTP_HEADERS, timeout=10)
+            resp = requests.get(self.url, headers=HTTP_HEADERS, timeout=4)
             if resp.status_code == 200:
                 root = ET.fromstring(resp.content)
                 items = root.findall(".//item")
@@ -139,7 +139,7 @@ class EcbNewsFetcher(BaseNewsFetcher):
         cutoff_kst = run_kst - datetime.timedelta(hours=lookback_hours)
 
         try:
-            resp = requests.get(self.url, headers=HTTP_HEADERS, timeout=10)
+            resp = requests.get(self.url, headers=HTTP_HEADERS, timeout=4)
             if resp.status_code == 200:
                 root = ET.fromstring(resp.content)
                 items = root.findall(".//item")
@@ -187,12 +187,12 @@ class EcbNewsFetcher(BaseNewsFetcher):
         }
 
 class MarketWatchNewsFetcher(BaseNewsFetcher):
-    """MarketWatch 공식 Top Stories & Bulletins RSS 수집기"""
+    """MarketWatch 거시 및 시장 주요 뉴스 RSS 수집기"""
     def __init__(self):
         super().__init__(source_name="MarketWatch", tier=2)
         self.urls = [
-            "http://feeds.marketwatch.com/marketwatch/topstories/",
-            "http://feeds.marketwatch.com/marketwatch/bulletins/"
+            "https://feeds.content.marketwatch.com/marketwatch/topstories/",
+            "https://feeds.content.marketwatch.com/marketwatch/bulletins"
         ]
 
     def fetch(self, run_time_kst: datetime.datetime, lookback_hours: int = 36) -> Dict[str, Any]:
@@ -204,7 +204,7 @@ class MarketWatchNewsFetcher(BaseNewsFetcher):
 
         for u in self.urls:
             try:
-                resp = requests.get(u, headers=HTTP_HEADERS, timeout=10)
+                resp = requests.get(u, headers=HTTP_HEADERS, timeout=4)
                 if resp.status_code == 200:
                     root = ET.fromstring(resp.content)
                     items = root.findall(".//item")
@@ -298,14 +298,14 @@ class YahooFinanceNewsFetcher(BaseNewsFetcher):
                     if pub_kst >= cutoff_kst:
                         articles.append({
                             "headline": headline,
-                            "source": f"Yahoo Finance ({publisher})",
+                            "source": f"{self.source_name} ({publisher})",
                             "source_tier": self.tier,
                             "url": link,
                             "published_at": str(pub_ts),
                             "published_at_kst": pub_kst.strftime("%Y-%m-%d %H:%M:%S KST"),
                             "published_dt_kst": pub_kst,
                             "country": "US",
-                            "category_hint": "COMMODITY" if "CL=F" in ticker or "GC=F" in ticker else ("BOND" if "^TNX" in ticker else "MARKET"),
+                            "category_hint": "TICKER_MACRO",
                             "summary": summary
                         })
             except Exception as e:
@@ -335,11 +335,14 @@ class MacroNewsCollector:
         ]
 
     def collect_all(self, run_time_kst: datetime.datetime, lookback_hours: int = 36) -> Dict[str, Any]:
+        from concurrent.futures import ThreadPoolExecutor
         all_raw_articles = []
         source_reports = []
 
-        for f in self.fetchers:
-            report = f.fetch(run_time_kst, lookback_hours=lookback_hours)
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            reports = list(executor.map(lambda f: f.fetch(run_time_kst, lookback_hours=lookback_hours), self.fetchers))
+
+        for report in reports:
             source_reports.append({
                 "source": report["source"],
                 "status": report["status"],

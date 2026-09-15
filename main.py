@@ -100,28 +100,23 @@ def print_market_tables(market_data: dict):
         comm_rows.append([r['name'], r['symbol'], c_str, chg_str, pct_str, r['price_type'], r['actual_as_of_kst']])
     print(tabulate(comm_rows, headers=["종목명", "심볼", "가격", "전일대비", "등락률(%)", "가격기준", "수집기준시각(KST)"], tablefmt="rounded_grid"))
 
-    # 5. 핵심 스프레드
-    print(f"\n{COLOR_BOLD}5. FICC 핵심 장단기 & 국가간 금리 스프레드 (Calculated Spreads){COLOR_RESET}")
-    sp_rows = []
-    for sp in spreads:
-        c_bp = f"{sp['current_bp']:+.1f} bp" if sp['current_bp'] is not None else "N/A"
-        chg_bp = format_change(sp['change_bp'], is_bp=True)
-        sp_rows.append([sp['name'], sp['type'], c_bp, chg_bp, sp['description']])
-    print(tabulate(sp_rows, headers=["스프레드 명칭", "구분", "현재 스프레드", "전일대비(bp)", "매크로 해석"], tablefmt="rounded_grid"))
 
-def run_pipeline(save_data: bool = True):
+
+def run_pipeline(save_data: bool = True, run_time_override: datetime.datetime = None):
     KST_TZ = pytz.timezone('Asia/Seoul')
-    now_kst = datetime.datetime.now(KST_TZ)
+    now_kst = run_time_override or datetime.datetime.now(KST_TZ)
     as_of_str = f"{now_kst.strftime('%H:%M')} 기준"
 
     print_header(now_kst)
 
-    # 1. 시장 데이터 수집 (28개)
+    # 1. 시장 데이터 수집 (28개 병렬 수집)
+    from concurrent.futures import ThreadPoolExecutor
     collectors = [EquityCollector(), FxCollector(), BondCollector(), CommodityCollector()]
     all_raw_market_records = []
-    for c in collectors:
-        records = c.collect(now_kst, is_post_1630=True)
-        all_raw_market_records.extend(records)
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [executor.submit(c.collect, now_kst, True) for c in collectors]
+        for f in futures:
+            all_raw_market_records.extend(f.result())
 
     processed_market = MacroCalculator.process_all(all_raw_market_records)
     print_market_tables(processed_market)
@@ -211,6 +206,13 @@ def run_pipeline(save_data: bool = True):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="FICC Daily Macro Pipeline Runner")
     parser.add_argument("--no-save", action="store_true", help="결과를 파일로 저장하지 않고 화면에만 출력")
+    parser.add_argument("--run-time", type=str, default=None, help="실행 기준 시각 지정 (예: '2026-09-07 22:50:35')")
     args = parser.parse_args()
 
-    run_pipeline(save_data=not args.no_save)
+    rt_override = None
+    if args.run_time:
+        kst = pytz.timezone('Asia/Seoul')
+        dt = datetime.datetime.strptime(args.run_time, "%Y-%m-%d %H:%M:%S")
+        rt_override = kst.localize(dt)
+
+    run_pipeline(save_data=not args.no_save, run_time_override=rt_override)

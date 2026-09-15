@@ -210,7 +210,10 @@ class DataSaver:
                 "counts_by_window": processed_events.get("counts_by_window", {}),
                 "day_review_events": processed_events.get("day_review_events", []),
                 "today_night_events": processed_events.get("today_night_events", []),
-                "upcoming_week_events": processed_events.get("upcoming_week_events", [])
+                "next_trading_day_events": processed_events.get("next_trading_day_events", []),
+                "policy_clusters": processed_events.get("policy_clusters", []),
+                "upcoming_week_events": processed_events.get("upcoming_week_events", []),
+                "all_processed_events": processed_events.get("all_processed_events", [])
             }
         }
 

@@ -12,6 +12,7 @@ import xml.etree.ElementTree as ET
 from typing import List, Dict, Any
 from collectors.base import BaseCollector
 from config.settings import BOND_INDICATORS, TARGET_DAILY_TIME_STR, KST_TZ
+from config.holidays import is_us_bond_holiday
 
 class BondCollector(BaseCollector):
     """국내 및 글로벌 벤치마크 국채 금리 수집기"""
@@ -94,7 +95,7 @@ class BondCollector(BaseCollector):
             </message>"""
 
             try:
-                resp = requests.post(url, data=xml_data.encode('utf-8'), headers=headers, timeout=10)
+                resp = requests.post(url, data=xml_data.encode('utf-8'), headers=headers, timeout=5)
                 if resp.status_code == 200 and "<BISComDspDatDTO>" in resp.text:
                     root = ET.fromstring(resp.text)
                     items = root.findall(".//BISComDspDatDTO")
@@ -146,6 +147,7 @@ class BondCollector(BaseCollector):
                                         "actual_as_of_kst": f"{query_date.strftime('%Y-%m-%d')} 16:30:00 KST (공식고시)",
                                         "raw_source_timestamp": date_str,
                                         "price_type": "최종호가수익률 (KOFIA/민평)",
+                                        "market_status": "CLOSED" if (is_today and is_post_1630) else "INTRADAY",
                                         "current": curr_val,
                                         "prev": prev_val,
                                         "change": chg_p,
@@ -153,6 +155,9 @@ class BondCollector(BaseCollector):
                                         "bp_change": bp_chg,
                                         "session_type": session_desc,
                                         "data_source": "KOFIA 공식 XML",
+                                        "is_holiday": False,
+                                        "holiday_name": None,
+                                        "return_basis": "DAILY",
                                         "validation_status": val_st,
                                         "message": "고시 확인" if is_today else "당일 16:30 미고시로 직전일 고시값 사용"
                                     }
@@ -183,7 +188,7 @@ class BondCollector(BaseCollector):
 
         results = {}
         try:
-            resp = requests.get(url, headers=headers, timeout=10)
+            resp = requests.get(url, headers=headers, timeout=5)
             if resp.status_code == 200:
                 quotes = resp.json().get('FormattedQuoteResult', {}).get('FormattedQuote', [])
                 for q in quotes:
@@ -213,8 +218,12 @@ class BondCollector(BaseCollector):
                             "actual_as_of_kst": "N/A",
                             "raw_source_timestamp": raw_time if raw_time else "PROVIDER_TIMESTAMP_UNAVAILABLE",
                             "price_type": "Benchmark Cash Yield",
+                            "market_status": "INTRADAY",
                             "session_type": "",
                             "data_source": "CNBC Quote API",
+                            "is_holiday": False,
+                            "holiday_name": None,
+                            "return_basis": "DAILY",
                             "current": None,
                             "prev": None,
                             "change": None,
@@ -250,26 +259,111 @@ class BondCollector(BaseCollector):
                                     record["actual_as_of_kst"] = raw_time
 
                             m_type = matched_meta["market_type"]
+                            record["is_holiday"] = False
+                            record["holiday_name"] = None
+                            record["return_basis"] = "DAILY"
+
                             if m_type == "US_BOND":
-                                record["session_type"] = f"직전 확정종가 ({record['market_as_of_date']} 미국 마감)"
-                                record["validation_status"] = "DAILY_CONFIRMED" if is_post_1630 else "PRE_1630_TEST"
+                                us_current_date = run_time_kst.astimezone(m_tz).date()
+                                is_holiday, holiday_name = is_us_bond_holiday(us_current_date)
+                                record["is_holiday"] = is_holiday
+                                record["holiday_name"] = holiday_name
+                                if is_holiday:
+                                    record["session_type"] = f"미국 국채시장 휴장 ({holiday_name}) 직전 종가"
+                                    record["price_type"] = "PREVIOUS_CLOSE"
+                                    record["market_status"] = "MARKET_CLOSED"
+                                    record["return_basis"] = "PREVIOUS_TRADING_DAY"
+                                    record["validation_status"] = "DAILY_CONFIRMED"
+                                else:
+                                    is_us_bond_open = (run_time_kst.hour >= 21 or run_time_kst.hour < 6)
+                                    if is_us_bond_open:
+                                        record["session_type"] = "미국 국채 정규장 실시간 호가"
+                                        record["price_type"] = "Benchmark Cash Yield"
+                                        record["market_status"] = "INTRADAY"
+                                        record["return_basis"] = "INTRADAY"
+                                        record["validation_status"] = "DAILY_CONFIRMED"
+                                    else:
+                                        record["session_type"] = f"직전 확정종가 ({record['market_as_of_date']} 미국 마감)"
+                                        record["price_type"] = "PREVIOUS_CLOSE"
+                                        record["market_status"] = "CLOSED"
+                                        record["return_basis"] = "PREVIOUS_TRADING_DAY"
+                                        record["validation_status"] = "DAILY_CONFIRMED" if is_post_1630 else "PRE_1630_TEST"
                             elif m_type == "DE_BOND":
-                                record["session_type"] = f"직전 확정종가 ({record['market_as_of_date']} 유럽 마감)"
-                                record["validation_status"] = "DAILY_CONFIRMED" if is_post_1630 else "PRE_1630_TEST"
+                                # 독일/유럽 국채 거래 시간: 프랑크푸르트 기준 08:00 ~ 17:30 CEST (KST 15:00 ~ 익일 00:30)
+                                is_de_open = (15 <= run_time_kst.hour <= 23) or (run_time_kst.hour == 0 and run_time_kst.minute <= 30)
+                                is_de_closed = not is_de_open
+                                record["is_holiday"] = False
+                                record["holiday_name"] = None
+                                if is_de_closed:
+                                    record["market_status"] = "CLOSED"
+                                    record["price_type"] = "PREVIOUS_CLOSE"
+                                    record["return_basis"] = "DAILY"
+                                    record["session_type"] = f"직전 확정종가 ({record['market_as_of_date']} 유럽 마감)"
+                                    record["validation_status"] = "DAILY_CONFIRMED" if is_post_1630 else "PRE_1630_TEST"
+                                else:
+                                    record["market_status"] = "INTRADAY"
+                                    record["price_type"] = "Benchmark Cash Yield"
+                                    record["return_basis"] = "INTRADAY"
+                                    record["session_type"] = "유럽 국채 정규장 실시간 호가"
+                                    record["validation_status"] = "DAILY_CONFIRMED" if is_post_1630 else "PRE_1630_TEST"
                             elif m_type == "JP_BOND":
                                 is_jp_closed = (run_time_kst.hour >= 15)
+                                record["is_holiday"] = False
+                                record["holiday_name"] = None
                                 if is_jp_closed:
                                     record["session_type"] = f"당일 확정종가 ({record['market_as_of_date']} 도쿄 마감)"
+                                    record["price_type"] = "PREVIOUS_CLOSE"
+                                    record["market_status"] = "CLOSED"
+                                    record["return_basis"] = "DAILY"
                                     record["validation_status"] = "DAILY_CONFIRMED" if is_post_1630 else "PRE_1630_TEST"
                                 else:
                                     record["session_type"] = f"당일 장중 금리 ({run_time_kst.strftime('%H:%M')} 미확정)"
+                                    record["price_type"] = "Benchmark Cash Yield"
+                                    record["market_status"] = "INTRADAY"
+                                    record["return_basis"] = "INTRADAY"
                                     record["validation_status"] = "PRE_1630_TEST"
 
-                            record["message"] = "정상 수집"
+                            results[matched_name] = record
+                        else:
+                            m_type = matched_meta["market_type"]
+                            if m_type == "US_BOND":
+                                m_tz = pytz.timezone(matched_meta["tz"])
+                                us_current_date = run_time_kst.astimezone(m_tz).date()
+                                is_holiday, holiday_name = is_us_bond_holiday(us_current_date)
+                                record["is_holiday"] = is_holiday
+                                record["holiday_name"] = holiday_name
+                                if is_holiday:
+                                    record["session_type"] = f"미국 국채시장 휴장 ({holiday_name}) 직전 종가"
+                                    record["price_type"] = "PREVIOUS_CLOSE"
+                                    record["market_status"] = "MARKET_CLOSED"
+                                    record["return_basis"] = "PREVIOUS_TRADING_DAY"
+                                    record["validation_status"] = "DAILY_CONFIRMED"
                             results[matched_name] = record
 
         except Exception as e:
             for name, meta in symbols.items():
+                m_tz = pytz.timezone(meta["tz"])
+                m_type = meta["market_type"]
+                is_hol = False
+                hol_name = None
+                ret_basis = "DAILY"
+                m_status = "CLOSED"
+                p_type = "PREVIOUS_CLOSE"
+                s_type = "수집 오류"
+
+                if m_type == "US_BOND":
+                    us_current_date = run_time_kst.astimezone(m_tz).date()
+                    is_hol, hol_name = is_us_bond_holiday(us_current_date)
+                    if is_hol:
+                        s_type = f"미국 국채시장 휴장 ({hol_name}) 직전 종가"
+                        p_type = "PREVIOUS_CLOSE"
+                        m_status = "MARKET_CLOSED"
+                        ret_basis = "PREVIOUS_TRADING_DAY"
+                    else:
+                        m_status = "INTRADAY" if (run_time_kst.hour >= 21 or run_time_kst.hour < 6) else "CLOSED"
+                        ret_basis = "INTRADAY" if m_status == "INTRADAY" else "PREVIOUS_TRADING_DAY"
+                        p_type = "Benchmark Cash Yield" if m_status == "INTRADAY" else "PREVIOUS_CLOSE"
+
                 results[name] = {
                     "category": "BOND",
                     "name": name,
@@ -281,15 +375,19 @@ class BondCollector(BaseCollector):
                     "market_as_of_date": "N/A",
                     "actual_as_of_kst": "N/A",
                     "raw_source_timestamp": "PROVIDER_TIMESTAMP_UNAVAILABLE",
-                    "price_type": "Benchmark Cash Yield",
-                    "session_type": "수집 오류",
+                    "price_type": p_type,
+                    "market_status": m_status,
+                    "session_type": s_type,
                     "data_source": "CNBC Quote API",
+                    "is_holiday": is_hol,
+                    "holiday_name": hol_name,
+                    "return_basis": ret_basis,
                     "current": None,
                     "prev": None,
                     "change": None,
                     "pct_change": None,
                     "bp_change": None,
-                    "validation_status": "ERROR",
+                    "validation_status": "DAILY_CONFIRMED" if is_hol else "ERROR",
                     "message": str(e)
                 }
 

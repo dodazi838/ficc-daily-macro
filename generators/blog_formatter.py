@@ -27,7 +27,7 @@
 
 import os
 import re
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 class NaverBlogFormatter:
     """네이버 블로그 HTML / TXT 듀얼 포맷터"""
@@ -53,17 +53,41 @@ class NaverBlogFormatter:
         "cpi y/y": "소비자물가지수(CPI, 전년비)",
         "core cpi m/m": "근원 소비자물가지수(Core CPI, 전월비)",
         "core cpi y/y": "근원 소비자물가지수(Core CPI, 전년비)",
+        "core cpi": "근원 소비자물가지수(Core CPI)",
+        "cpi": "소비자물가지수(CPI)",
+        "core ppi m/m": "근원 생산자물가지수(Core PPI, 전월비)",
+        "core ppi y/y": "근원 생산자물가지수(Core PPI, 전년비)",
+        "core ppi": "근원 생산자물가지수(Core PPI)",
         "ppi m/m": "생산자물가지수(PPI, 전월비)",
         "ppi y/y": "생산자물가지수(PPI, 전년비)",
+        "ppi": "생산자물가지수(PPI)",
+        "미국 소비자물가지수(cpi) 발표": "미국 소비자물가지수(CPI) 발표",
+        "미국 생산자물가지수(ppi) 발표": "미국 생산자물가지수(PPI) 발표",
         "core pce price index m/m": "근원 개인소비지출(PCE) 물가지수 (전월비)",
         "core pce price index y/y": "근원 개인소비지출(PCE) 물가지수 (전월비)",
         "retail sales m/m": "소매판매 (전월비)",
         "prelim gdp q/q": "GDP 성장률 속보치 (전분기비)",
         "fed interest rate decision": "미 연준(Fed) 기준금리 결정",
         "fomc statement": "FOMC 성명서 발표",
-        "fomc press conference": "FOMC 기자회견",
-        "ecb main refinancing rate": "ECB 기준금리 결정",
-        "monetary policy statement": "통화정책 성명서"
+        "ecb main refinancing rate": "ECB 기준금리(Main Refinancing Rate) 결정",
+        "main refinancing rate": "ECB 기준금리(Main Refinancing Rate) 결정",
+        "monetary policy statement": "ECB 통화정책 성명서",
+        "ecb press conference": "ECB 통화정책 기자회견",
+        "macroeconomic projections": "ECB 거시경제 전망",
+        "ecb macroeconomic projections": "ECB 거시경제 전망",
+        "ecb president lagarde speaks": "ECB 총재 라가르드 정책 발언",
+        "german buba president nagel speaks": "독일 연방은행 총재 나겔 발언",
+        "adp weekly employment change": "미국 ADP 주간 고용변화 보고서",
+        "adp non-farm employment change": "미국 ADP 비농업 부문 고용 변화",
+        "consumer credit m/m": "미국 소비자신용 (전월비)",
+        "10-y bond auction": "미국 10년물 국채 입찰",
+        "30-y bond auction": "미국 30년물 국채 입찰",
+        "3-y bond auction": "미국 3년물 국채 입찰",
+        "german 10-y bond auction": "독일 10년물 국채 입찰",
+        "ecb 통화정책 결정": "ECB 통화정책 결정",
+        "fomc 기준금리 결정": "FOMC 기준금리 결정",
+        "boj 금융정책결정회의": "BOJ 금융정책결정회의",
+        "boe 통화정책 결정": "BOE 통화정책 결정"
     }
 
     DISPLAY_NAME_MAP = {
@@ -107,12 +131,18 @@ class NaverBlogFormatter:
         if not event_name:
             return "-"
         clean_name = event_name.strip()
+
+        # 이미 한글이 포함된 완성형 명칭인 경우 그대로 반환
+        if any('\uac00' <= char <= '\ud7a3' for char in clean_name):
+            return clean_name
+
         lower_name = clean_name.lower()
 
         if lower_name in cls.EVENT_TRANSLATION_MAP:
             return cls.EVENT_TRANSLATION_MAP[lower_name]
 
-        for eng_pat, kor_trans in cls.EVENT_TRANSLATION_MAP.items():
+        # 길이 역순으로 정렬하여 구체적인 키(예: core ppi m/m)가 일반 키(ppi m/m)보다 우선 매칭되도록 보장
+        for eng_pat, kor_trans in sorted(cls.EVENT_TRANSLATION_MAP.items(), key=lambda x: len(x[0]), reverse=True):
             if eng_pat in lower_name:
                 return kor_trans
 
@@ -154,6 +184,24 @@ class NaverBlogFormatter:
             res = re.sub(re.escape(eng), kor, res, flags=re.IGNORECASE)
 
         return f"{country_prefix}{res}".strip()
+
+    @classmethod
+    def get_event_star_rating(cls, ev: Dict[str, Any]) -> str:
+        """이벤트의 5성급 중요도 별점 반환 (★★★★★ ~ ★)"""
+        prio = ev.get("macro_priority")
+        if prio is None:
+            from processors.event_processor import MacroEventProcessor
+            prio = MacroEventProcessor.get_macro_priority(ev)
+        if prio >= 5:
+            return "★★★★★"
+        elif prio == 4:
+            return "★★★★"
+        elif prio == 3:
+            return "★★★"
+        elif prio == 2:
+            return "★★"
+        else:
+            return "★"
 
     @classmethod
     def format_spreads_inline(cls, spreads: List[Dict[str, Any]]) -> str:
@@ -205,9 +253,25 @@ class NaverBlogFormatter:
             raise ValueError(f"검증을 통과하지 못한 리포트는 블로그 원고로 렌더링할 수 없습니다. (적발된 오류: {len(errors)}건)")
 
     @classmethod
+    def _validate_date_alignment(cls, report_data: Dict[str, Any], processed_market_data: Optional[Dict[str, Any]] = None):
+        """report_data와 processed_market_data 간의 report_date 정합성 엄격 검증"""
+        if not processed_market_data:
+            return
+
+        rep_date = str(report_data.get("report_date", "")).strip()
+        proc_date = str(processed_market_data.get("report_date", "")).strip()
+
+        if rep_date and proc_date and rep_date != proc_date:
+            raise ValueError(
+                f"[DateMismatchError] report_data 날짜('{rep_date}')와 processed_market_data 날짜('{proc_date}')가 불일치합니다. "
+                f"서로 다른 날짜의 데이터를 결합하여 리포트를 렌더링할 수 없습니다."
+            )
+
+    @classmethod
     def format_blog_text(cls, report_data: Dict[str, Any], processed_market_data: Dict[str, Any], is_post_1630: bool = False) -> str:
         """검수용 Plain Text 원고 생성"""
         cls._validate_input_report(report_data)
+        cls._validate_date_alignment(report_data, processed_market_data)
 
         report_date = report_data.get("report_date", "")
         content = report_data.get("content") or report_data.get("validated_content") or {}
@@ -234,12 +298,19 @@ class NaverBlogFormatter:
         lines.append("1. 증시")
         lines.append(f"{'지수명':<16} | {'종가/현재가':>12} | {'등락률':>10}")
         lines.append("-" * 46)
+        has_eq_holiday = False
         for it in categories.get("EQUITY", []):
-            d_name = cls.clean_display_name(it['name'])
-            curr_str = f"{it['current']:,.2f}" if it.get("current") is not None else "-"
+            is_hol = bool(it.get("is_holiday") is True or it.get("market_status") == "MARKET_CLOSED")
+            if is_hol:
+                has_eq_holiday = True
+            d_name = f"{cls.clean_display_name(it['name'])} (휴장)" if is_hol else cls.clean_display_name(it['name'])
+            c_val = it.get("current")
+            curr_str = f"{c_val:,.2f}" if (c_val is not None and not (isinstance(c_val, float) and (c_val != c_val))) else "-"
             pct_val = it.get("pct_change")
-            pct_str = f"{pct_val:+.2f}%" if pct_val is not None else "-"
+            pct_str = f"{pct_val:+.2f}%" if (pct_val is not None and not (isinstance(pct_val, float) and (pct_val != pct_val))) else "-"
             lines.append(f"{d_name:<16} | {curr_str:>12} | {pct_str:>10}")
+        if has_eq_holiday:
+            lines.append("※ (휴장) 표기 지수는 현지 거래소 휴장으로 가격 및 등락률 모두 직전 거래일 확정종가 기준임.")
         lines.append("")
 
         # [외환 표]
@@ -258,15 +329,18 @@ class NaverBlogFormatter:
         lines.append("3. 국채")
         lines.append(f"{'채권 만기':<16} | {'수익률(%)':>12} | {'변동(bp)':>10}")
         lines.append("-" * 46)
+        has_bond_holiday = False
         for it in categories.get("BOND", []):
-            d_name = cls.clean_display_name(it['name'])
+            is_hol = bool(it.get("is_holiday") is True or it.get("market_status") == "MARKET_CLOSED")
+            if is_hol:
+                has_bond_holiday = True
+            d_name = f"{cls.clean_display_name(it['name'])} (휴장)" if is_hol else cls.clean_display_name(it['name'])
             curr_str = f"{it['current']:.2f}%" if it.get("current") is not None else "-"
             bp_val = it.get("bp_change")
             bp_str = f"{bp_val:+.1f} bp" if bp_val is not None else "-"
             lines.append(f"{d_name:<16} | {curr_str:>12} | {bp_str:>10}")
-        if spreads:
-            spread_inline = cls.format_spreads_inline(spreads)
-            lines.append(f"   주요 스프레드: {spread_inline}")
+        if has_bond_holiday:
+            lines.append("※ (휴장) 표기 채권은 현지 국채시장 휴장으로 수익률 및 변동폭 모두 직전 거래일 마감 기준임.")
         lines.append("")
 
         # [원자재 표]
@@ -275,9 +349,11 @@ class NaverBlogFormatter:
         lines.append("-" * 46)
         for it in categories.get("COMMODITY", []):
             d_name = cls.clean_display_name(it['name'])
-            curr_str = f"${it['current']:,.2f}" if it.get("current") is not None else "-"
+            c_val = it.get("current")
+            curr_str = f"${c_val:,.2f}" if (c_val is not None and not (isinstance(c_val, float) and (c_val != c_val))) else "-"
             pct_val = it.get("pct_change")
-            pct_str = f"{pct_val:+.2f}%" if pct_val is not None else "-"
+            is_unavail = (it.get("change_status") == "UNAVAILABLE" or pct_val is None)
+            pct_str = "-" if is_unavail else f"{pct_val:+.2f}%"
             lines.append(f"{d_name:<16} | {curr_str:>12} | {pct_str:>10}")
         lines.append("")
 
@@ -327,21 +403,23 @@ class NaverBlogFormatter:
 
         from processors.event_processor import MacroEventProcessor
         raw_day_review = economic_events.get("day_review_events", [])
-        curated_day = MacroEventProcessor.curate_day_review_events(raw_day_review, run_time_val) if len(raw_day_review) > 4 else raw_day_review
+        curated_day = MacroEventProcessor.curate_day_review_events(raw_day_review, run_time_val)
 
         # 1. 당일 주요 발표 지표 표
         lines.append(f"당일 주요 발표 ({as_of_time} 이전)")
         if curated_day:
-            lines.append(f"{'국가':<6} | {'발표시각':<8} | {'중요도':<6} | {'지표명 (한글)':<28} | {'실제치':>8} | {'예상치':>8} | {'전월치':>8}")
-            lines.append("-" * 84)
+            lines.append(f"{'국가':<6} | {'발표시각':<8} | {'중요도':<8} | {'지표명 (한글)':<28} | {'실제치':>8} | {'예상치':>8} | {'전월치':>8}")
+            lines.append("-" * 86)
             for ev in curated_day:
-                imp_star = "★★★" if ev.get("importance") == "HIGH" else ("★★" if ev.get("importance") == "MEDIUM" else "★")
+                imp_star = cls.get_event_star_rating(ev)
                 time_short = ev.get("scheduled_time_kst") or (ev.get("scheduled_at_kst", "")[11:16] if len(ev.get("scheduled_at_kst", "")) >= 16 else "-")
                 kor_event_name = cls.translate_event_name(ev.get("event_name", ""), ev.get("country", ""))
                 act_val = ev.get("actual") or "-"
                 fc_val = ev.get("forecast") or "-"
                 pr_val = ev.get("prior") or ev.get("previous") or "-"
-                lines.append(f"{ev.get('country', ''):<6} | {time_short:<8} | {imp_star:<6} | {kor_event_name[:26]:<28} | {act_val:>8} | {fc_val:>8} | {pr_val:>8}")
+                if ev.get("is_revised_prior") and pr_val != "-":
+                    pr_val = f"{pr_val}(수정)"
+                lines.append(f"{ev.get('country', ''):<6} | {time_short:<8} | {imp_star:<8} | {kor_event_name[:26]:<28} | {act_val:>8} | {fc_val:>8} | {pr_val:>8}")
             lines.append("")
         else:
             lines.append(f"※ 금일 {as_of_time} 이전 주요 발표 지표 없음")
@@ -351,17 +429,42 @@ class NaverBlogFormatter:
         today_night = economic_events.get("today_night_events", [])
         lines.append(f"향후 주요 발표 ({as_of_time} 이후)")
         if today_night:
-            lines.append(f"{'국가':<6} | {'예정시각':<8} | {'중요도':<6} | {'지표명 (한글)':<32} | {'예상치':>8}")
-            lines.append("-" * 72)
+            lines.append(f"{'국가':<6} | {'예정시각':<8} | {'중요도':<8} | {'지표명 (한글)':<32} | {'예상치':>8}")
+            lines.append("-" * 74)
             for ev in today_night:
-                imp_star = "★★★" if ev.get("importance") == "HIGH" else ("★★" if ev.get("importance") == "MEDIUM" else "★")
+                imp_star = cls.get_event_star_rating(ev)
                 time_short = ev.get("scheduled_time_kst") or (ev.get("scheduled_at_kst", "")[11:16] if len(ev.get("scheduled_at_kst", "")) >= 16 else "-")
                 f_val = ev.get("forecast") or "-"
                 kor_event_name = cls.translate_event_name(ev.get("event_name", ""), ev.get("country", ""))
-                lines.append(f"{ev.get('country', ''):<6} | {time_short:<8} | {imp_star:<6} | {kor_event_name[:30]:<32} | {f_val:>8}")
+                lines.append(f"{ev.get('country', ''):<6} | {time_short:<8} | {imp_star:<8} | {kor_event_name[:30]:<32} | {f_val:>8}")
             lines.append("")
         else:
             lines.append(f"※ 금일 {as_of_time} 이후 주요 발표 예정 지표 없음")
+            lines.append("")
+
+        # 3. 다음 거래일 핵심 발표 예정 지표 표
+        next_trading_day = economic_events.get("next_trading_day_events", [])
+        if next_trading_day:
+            next_date_str = ""
+            for it in next_trading_day:
+                dt_str = it.get("policy_date") or (it.get("scheduled_at_kst", "")[:10] if len(it.get("scheduled_at_kst", "")) >= 10 else "")
+                if dt_str:
+                    next_date_str = dt_str
+                    break
+            date_label = f" ({next_date_str})" if next_date_str else ""
+            lines.append(f"다음 거래일 핵심 발표{date_label}")
+            lines.append(f"{'국가':<6} | {'예정시각':<8} | {'중요도':<8} | {'지표명 (한글)':<32} | {'시장예상치':>8}")
+            lines.append("-" * 74)
+            for ev in next_trading_day:
+                imp_star = cls.get_event_star_rating(ev)
+                time_short = ev.get("scheduled_time_kst") or (ev.get("scheduled_at_kst", "")[11:16] if len(ev.get("scheduled_at_kst", "")) >= 16 else "-")
+                f_val = ev.get("forecast") or "-"
+                kor_event_name = cls.translate_event_name(ev.get("event_name", ""), ev.get("country", ""))
+                if ev.get("cluster_type") == "CENTRAL_BANK_POLICY":
+                    kor_event_name = f"{kor_event_name} (금리·기자회견)"
+                elif ev.get("cluster_type") in ["CPI_CLUSTER", "MACRO_EVENT_CLUSTER"]:
+                    kor_event_name = ev.get("representative_event") or ev.get("event_name_kor") or kor_event_name
+                lines.append(f"{ev.get('country', ''):<6} | {time_short:<8} | {imp_star:<8} | {kor_event_name[:30]:<32} | {f_val:>8}")
             lines.append("")
 
         lines.append("=" * 65)
@@ -371,6 +474,7 @@ class NaverBlogFormatter:
     def format_blog_html(cls, report_data: Dict[str, Any], processed_market_data: Dict[str, Any], is_post_1630: bool = False) -> str:
         """네이버 블로그 SmartEditor ONE 전용 Rich HTML"""
         cls._validate_input_report(report_data)
+        cls._validate_date_alignment(report_data, processed_market_data)
 
         report_date = report_data.get("report_date", "")
         content = report_data.get("content") or report_data.get("validated_content") or {}
@@ -404,18 +508,25 @@ class NaverBlogFormatter:
         market_3col_aligns = ["left", "right", "right"]
 
         # [1] 증시 표 (15px)
+        has_eq_hol = any(bool(it.get("is_holiday") is True or it.get("market_status") == "MARKET_CLOSED") for it in categories.get("EQUITY", []))
+        eq_rows = []
+        for it in categories.get("EQUITY", []):
+            is_hol = bool(it.get("is_holiday") is True or it.get("market_status") == "MARKET_CLOSED")
+            name_display = f"{cls.clean_display_name(it['name'])} <span style='font-size: 12px; color: #6c757d; font-weight: normal;'>(휴장)</span>" if is_hol else cls.clean_display_name(it['name'])
+            c_val = it.get("current")
+            curr_str = f"{c_val:,.2f}" if (c_val is not None and not (isinstance(c_val, float) and (c_val != c_val))) else "-"
+            eq_rows.append([
+                name_display,
+                curr_str,
+                cls._format_pct_html(it.get("pct_change"))
+            ])
+        eq_footnote = "※ (휴장) 표기 지수는 현지 거래소 휴장으로 가격 및 등락률 모두 직전 거래일 확정종가 기준임." if has_eq_hol else ""
         html.append(cls._render_table_html(
             title="1. 증시",
             headers=["지수명", "종가/현재가", "등락률"],
-            rows=[
-                [
-                    cls.clean_display_name(it['name']),
-                    f"{it['current']:,.2f}" if it.get("current") is not None else "-",
-                    cls._format_pct_html(it.get("pct_change"))
-                ]
-                for it in categories.get("EQUITY", [])
-            ],
+            rows=eq_rows,
             font_family=FONT_FAMILY,
+            footnote_note=eq_footnote,
             col_widths=market_3col_widths,
             col_aligns=market_3col_aligns
         ))
@@ -438,26 +549,28 @@ class NaverBlogFormatter:
         ))
 
         # [3] 국채 표 & 간결한 스프레드 인라인 표기 (15px)
-        bond_rows = [
-            [
-                cls.clean_display_name(it['name']),
-                f"{it['current']:.2f}%" if it.get("current") is not None else "-",
+        has_bd_hol = any(bool(it.get("is_holiday") is True or it.get("market_status") == "MARKET_CLOSED") for it in categories.get("BOND", []))
+        bond_rows = []
+        for it in categories.get("BOND", []):
+            is_hol = bool(it.get("is_holiday") is True or it.get("market_status") == "MARKET_CLOSED")
+            name_display = f"{cls.clean_display_name(it['name'])} <span style='font-size: 12px; color: #6c757d; font-weight: normal;'>(휴장)</span>" if is_hol else cls.clean_display_name(it['name'])
+            curr_str = f"{it['current']:.2f}%" if it.get("current") is not None else "-"
+            bond_rows.append([
+                name_display,
+                curr_str,
                 cls._format_bp_html(it.get("bp_change"))
-            ]
-            for it in categories.get("BOND", [])
-        ]
+            ])
+        bd_footnote = "※ (휴장) 표기 채권은 현지 국채시장 휴장으로 수익률 및 변동폭 모두 직전 거래일 마감 기준임." if has_bd_hol else ""
         html.append(cls._render_table_html(
             title="3. 국채",
             headers=["채권 만기", "수익률(%)", "전일대비(bp)"],
             rows=bond_rows,
             font_family=FONT_FAMILY,
+            footnote_note=bd_footnote,
             col_widths=market_3col_widths,
             col_aligns=market_3col_aligns
         ))
 
-        if spreads:
-            spread_inline = cls.format_spreads_inline(spreads)
-            html.append(f'<p style="font-family: {FONT_FAMILY}; font-size: 15px; font-weight: normal; color: #000000; margin-top: -10px; margin-bottom: 22px; padding: 4px 6px;"><span style="font-size: 15px; font-weight: normal; color: #000000;"><strong>주요 스프레드:</strong> {spread_inline}</span></p>')
 
         # [4] 원자재 표 (15px)
         html.append(cls._render_table_html(
@@ -467,7 +580,7 @@ class NaverBlogFormatter:
                 [
                     cls.clean_display_name(it['name']),
                     f"${it['current']:,.2f}" if it.get("current") is not None else "-",
-                    cls._format_pct_html(it.get("pct_change"))
+                    "-" if (it.get("change_status") == "UNAVAILABLE" or it.get("pct_change") is None) else cls._format_pct_html(it.get("pct_change"))
                 ]
                 for it in categories.get("COMMODITY", [])
             ],
@@ -527,15 +640,18 @@ class NaverBlogFormatter:
 
         from processors.event_processor import MacroEventProcessor
         raw_day_review = economic_events.get("day_review_events", [])
-        curated_day = MacroEventProcessor.curate_day_review_events(raw_day_review, run_time_val) if len(raw_day_review) > 4 else raw_day_review
+        curated_day = MacroEventProcessor.curate_day_review_events(raw_day_review, run_time_val)
 
         # [1] 당일 주요 발표 지표 표 (실제치, 예상치, 전월치 포함 7열)
         if curated_day:
             day_rows = []
             for ev in curated_day:
-                imp_star = "★★★" if ev.get("importance") == "HIGH" else ("★★" if ev.get("importance") == "MEDIUM" else "★")
+                imp_star = cls.get_event_star_rating(ev)
                 time_short = ev.get("scheduled_time_kst") or (ev.get("scheduled_at_kst", "")[11:16] if len(ev.get("scheduled_at_kst", "")) >= 16 else "-")
                 kor_event_name = cls.translate_event_name(ev.get("event_name", ""), ev.get("country", ""))
+                pr_val = ev.get("prior") or ev.get("previous") or "-"
+                if ev.get("is_revised_prior") and pr_val != "-":
+                    pr_val = f"{pr_val} (수정)"
                 day_rows.append([
                     ev.get("country", ""),
                     time_short,
@@ -543,7 +659,7 @@ class NaverBlogFormatter:
                     kor_event_name,
                     ev.get("actual") or "-",
                     ev.get("forecast") or "-",
-                    ev.get("prior") or ev.get("previous") or "-"
+                    pr_val
                 ])
 
             html.append(cls._render_table_html(
@@ -551,7 +667,7 @@ class NaverBlogFormatter:
                 headers=["국가", "발표시각", "중요도", "지표명", "실제치", "예상치", "전월치"],
                 rows=day_rows,
                 font_family=FONT_FAMILY,
-                col_widths=["9%", "14%", "11%", "36%", "10%", "10%", "10%"],
+                col_widths=["9%", "14%", "12%", "35%", "10%", "10%", "10%"],
                 col_aligns=["center", "center", "center", "left", "right", "right", "right"]
             ))
         else:
@@ -562,7 +678,7 @@ class NaverBlogFormatter:
         if today_night:
             event_rows = []
             for ev in today_night:
-                imp_star = "★★★" if ev.get("importance") == "HIGH" else ("★★" if ev.get("importance") == "MEDIUM" else "★")
+                imp_star = cls.get_event_star_rating(ev)
                 time_short = ev.get("scheduled_time_kst") or (ev.get("scheduled_at_kst", "")[11:16] if len(ev.get("scheduled_at_kst", "")) >= 16 else "-")
                 kor_event_name = cls.translate_event_name(ev.get("event_name", ""), ev.get("country", ""))
                 event_rows.append([
@@ -579,11 +695,47 @@ class NaverBlogFormatter:
                 headers=["국가", "예정시각", "중요도", "지표명", "시장예상치"],
                 rows=event_rows,
                 font_family=FONT_FAMILY,
-                col_widths=["10%", "17%", "12%", "43%", "18%"],
+                col_widths=["10%", "16%", "13%", "43%", "18%"],
                 col_aligns=["center", "center", "center", "left", "right"]
             ))
         else:
             html.append(f'<p style="font-family: {FONT_FAMILY}; font-size: 14px; font-weight: normal; color: #6c757d; margin: 10px 0 20px 0;"><span style="font-size: 14px; color: #6c757d;">※ 금일 {as_of_time} 이후 주요 발표 예정 지표 없음</span></p>')
+
+        # [3] 다음 거래일 핵심 발표 예정 지표 표
+        next_trading_day = economic_events.get("next_trading_day_events", [])
+        if next_trading_day:
+            next_date_str = ""
+            for it in next_trading_day:
+                dt_str = it.get("policy_date") or (it.get("scheduled_at_kst", "")[:10] if len(it.get("scheduled_at_kst", "")) >= 10 else "")
+                if dt_str:
+                    next_date_str = dt_str
+                    break
+            date_label = f" ({next_date_str})" if next_date_str else ""
+            next_rows = []
+            for ev in next_trading_day:
+                imp_star = cls.get_event_star_rating(ev)
+                time_short = ev.get("scheduled_time_kst") or (ev.get("scheduled_at_kst", "")[11:16] if len(ev.get("scheduled_at_kst", "")) >= 16 else "-")
+                kor_event_name = cls.translate_event_name(ev.get("event_name", ""), ev.get("country", ""))
+                if ev.get("cluster_type") == "CENTRAL_BANK_POLICY":
+                    kor_event_name = f"{kor_event_name} (금리·성명서·기자회견)"
+                elif ev.get("cluster_type") in ["CPI_CLUSTER", "MACRO_EVENT_CLUSTER"]:
+                    kor_event_name = ev.get("representative_event") or ev.get("event_name_kor") or kor_event_name
+                next_rows.append([
+                    ev.get("country", ""),
+                    time_short,
+                    f'<span style="color: #e65100; font-weight: bold;">{imp_star}</span>',
+                    kor_event_name,
+                    ev.get("forecast") or "-"
+                ])
+
+            html.append(cls._render_table_html(
+                title=f"다음 거래일 핵심 발표{date_label}",
+                headers=["국가", "예정시각", "중요도", "지표명", "시장예상치"],
+                rows=next_rows,
+                font_family=FONT_FAMILY,
+                col_widths=["10%", "16%", "13%", "43%", "18%"],
+                col_aligns=["center", "center", "center", "left", "right"]
+            ))
 
         html.append('</div>')
         return "\n".join(html)
@@ -591,6 +743,12 @@ class NaverBlogFormatter:
     @staticmethod
     def _format_pct_html(val) -> str:
         if val is None:
+            return "-"
+        try:
+            import math
+            if math.isnan(float(val)):
+                return "-"
+        except Exception:
             return "-"
         if val > 0:
             return f'<span style="color: #d32f2f; font-weight: bold;">+{val:.2f}%</span>'
@@ -602,6 +760,12 @@ class NaverBlogFormatter:
     @staticmethod
     def _format_bp_html(val) -> str:
         if val is None:
+            return "-"
+        try:
+            import math
+            if math.isnan(float(val)):
+                return "-"
+        except Exception:
             return "-"
         if val > 0:
             return f'<span style="color: #d32f2f; font-weight: bold;">+{val:.1f} bp</span>'
@@ -618,6 +782,7 @@ class NaverBlogFormatter:
         rows: list, 
         font_family: str = "", 
         baseline_note: str = "",
+        footnote_note: str = "",
         col_widths: list = None,
         col_aligns: list = None
     ) -> str:
@@ -669,5 +834,8 @@ class NaverBlogFormatter:
                 )
                 html.append(f'<td style="{td_style}"><span style="font-size: 15px; font-weight: normal; color: #000000;">{cell}</span></td>')
             html.append('</tr>')
-        html.append('</tbody></table></div>')
+        html.append('</tbody></table>')
+        if footnote_note:
+            html.append(f'<p style="font-family: {font_family}; font-size: 13px; font-weight: normal; color: #6c757d; margin: 7px 0 0 0;"><span style="font-size: 13px; font-weight: normal; color: #6c757d;">{footnote_note}</span></p>')
+        html.append('</div>')
         return "\n".join(html)
